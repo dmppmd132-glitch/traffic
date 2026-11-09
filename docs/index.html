@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>台鐵時刻</title>
+  <title>台鐵公車時刻</title>
   <meta name="theme-color" content="#0b3d91">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -13,11 +13,16 @@
 </head>
 <body>
   <header class="top">
-    <h1>台鐵時刻</h1>
+    <h1>台鐵公車時刻</h1>
     <span id="netStatus" class="net" hidden>離線</span>
   </header>
 
-  <main>
+  <nav class="tabs" aria-label="交通工具">
+    <button type="button" data-tab="rail" class="on">台鐵</button>
+    <button type="button" data-tab="bus">公車</button>
+  </nav>
+
+  <main id="railView">
     <section class="card" id="searchCard">
       <div class="route">
         <label>
@@ -64,8 +69,47 @@
     <section id="results" aria-live="polite"></section>
   </main>
 
+  <main id="busView" hidden>
+    <section class="card" id="busSearchCard">
+      <label>
+        <span>路線</span>
+        <input id="busInput" placeholder="輸入路線，例如 紅9、99、橘10" autocomplete="off" inputmode="search" enterkeyhint="search">
+      </label>
+      <div id="busSuggest" class="chips suggest"></div>
+      <p id="busMsg" class="msg" role="status"></p>
+    </section>
+
+    <section class="card" id="busQuick" hidden>
+      <div id="busFavStopBlock" hidden>
+        <h2>常用站牌</h2>
+        <div id="busFavStops"></div>
+      </div>
+      <div id="busFavRouteBlock" hidden>
+        <h2>常用路線</h2>
+        <div id="busFavRoutes" class="chips"></div>
+      </div>
+      <div id="busHistBlock" hidden>
+        <h2>最近查詢 <button id="busClearHist" type="button" class="link">清除</button></h2>
+        <div id="busHist" class="chips"></div>
+      </div>
+    </section>
+
+    <section id="busRoute" hidden>
+      <div class="card">
+        <div class="head">
+          <h2 id="busRouteTitle"></h2>
+          <button id="busFavRouteBtn" type="button" aria-pressed="false">☆ 常用</button>
+        </div>
+        <div id="busDirTabs" class="chips"></div>
+        <p id="busUpdated" class="msg info"></p>
+      </div>
+      <div id="busStops"></div>
+    </section>
+  </main>
+
   <datalist id="stationList"></datalist>
   <script src="config.js"></script>
   <script src="app.js"></script>
+  <script src="bus.js"></script>
 </body>
 </html>

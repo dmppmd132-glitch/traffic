@@ -1,6 +1,6 @@
-# 台鐵時刻 PWA
+# 台鐵公車時刻 PWA
 
-台鐵起迄站查詢，會記住上次路線、常用路線與最近查詢。資料來源：交通部 TDX。
+台鐵起迄站查詢，以及高雄公車即時到站（路線搜尋、方向、站序、常用路線與常用站牌）。會記住上次查詢的路線。資料來源：交通部 TDX。
 
 - `docs/`：前端 PWA，透過 GitHub Pages 發佈（https://dmppmd132-glitch.github.io/traffic/）
 - `worker/`：Cloudflare Worker，保管 TDX 金鑰、換 token、快取，並提供 `/api/*`
@@ -35,7 +35,14 @@ TDX_SECRET=xxx
 執行 `wrangler dev`，並把 `docs/config.js` 暫時指向 `http://localhost:8787`；
 同時把 `ALLOWED_ORIGIN` 改成你本機前端的網址。
 
+## 公車功能
+
+- 預設縣市為高雄（`Kaohsiung`）。要改縣市，在 `docs/config.js` 加上 `window.TRA_BUS_CITY = 'Taipei';`（TDX 的縣市英文名）。
+- Worker 提供 `/api/bus/routes`、`/api/bus/stops`、`/api/bus/eta`（參數 `city`、`route`）。
+- 到站時間每 20 秒自動更新（僅在公車分頁可見時）。
+
 ## 記憶功能（localStorage）
 
 `tra.lastRoute` 上次路線、`tra.favorites` 常用路線（最多 8）、`tra.history` 最近查詢（最多 8）、`tra.stations` 車站清單快取（7 天）。
+公車：`tra.bus.favRoutes` 常用路線、`tra.bus.favStops` 常用站牌、`tra.bus.history` 最近查詢、`tra.bus.last` 上次路線、`tra.bus.routes` 路線清單快取（7 天）。
 換瀏覽器或清除網站資料後會消失。

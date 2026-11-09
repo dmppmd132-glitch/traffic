@@ -112,3 +112,57 @@ button.link { border: 0; background: none; padding: 0 0 0 8px; color: var(--bran
 .delay.late { color: var(--warn); }
 .delay.ontime { color: var(--ok); }
 .empty { text-align: center; color: var(--sub); padding: 24px 0; }
+
+/* ---------- 分頁（台鐵 / 公車）---------- */
+.tabs {
+  display: flex;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 10px 12px 0;
+  gap: 8px;
+}
+.tabs button { flex: 1; padding: 8px 0; font-weight: 600; }
+.tabs button.on { background: var(--brand); color: var(--brand-text); border-color: var(--brand); }
+
+/* ---------- 公車 ---------- */
+.suggest { margin-top: 10px; }
+.chip.on { background: var(--brand); color: var(--brand-text); border-color: var(--brand); }
+.card .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.card .head h2 { margin: 0; font-size: 20px; color: var(--text); }
+#busFavRouteBtn[aria-pressed="true"] { color: #e0a100; border-color: #e0a100; }
+#busFavStopBlock, #busFavRouteBlock { margin-bottom: 12px; }
+#busHistBlock { margin-bottom: 0; }
+
+.stoprow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+}
+.stoprow.hl { outline: 2px solid var(--brand); }
+.stoprow.fav { padding: 6px 8px 6px 12px; }
+.stoprow .seq { width: 1.8em; color: var(--sub); font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+.stoprow .stopname { flex: 1; min-width: 0; font-size: 16px; }
+.stopmain { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; text-align: left; border: 0; background: none; padding: 0; }
+.stopmain .stopsub { font-size: 12px; color: var(--sub); }
+
+.eta {
+  min-width: 4.5em;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: var(--bg);
+}
+.eta.none { color: var(--sub); font-weight: 400; font-size: 13px; }
+.eta.soon { color: var(--warn); }
+.eta.now { background: var(--warn); color: #fff; }
+
+.star { border: 0; background: none; padding: 4px 6px; font-size: 20px; color: var(--sub); line-height: 1; }
+.star.on { color: #e0a100; }

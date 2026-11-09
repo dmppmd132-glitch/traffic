@@ -73,15 +73,16 @@ async function getToken(env) {
 }
 
 // 呼叫 TDX 並用 Cache API 快取結果，減少 API 次數（TDX 有呼叫額度限制）
-async function tdxGet(env, ctx, path, ttl) {
+// query：額外的 OData 參數（例如 %24select=...），用來縮小回傳資料量
+async function tdxGet(env, ctx, path, ttl, query = '') {
   const cache = caches.default;
-  const cacheKey = new Request('https://cache.local' + path);
+  const cacheKey = new Request('https://cache.local' + path + '?' + query);
 
   const hit = await cache.match(cacheKey);
   if (hit) return hit;
 
   const token = await getToken(env);
-  const upstream = await fetch(`${TDX_BASE}${path}?%24format=JSON`, {
+  const upstream = await fetch(`${TDX_BASE}${path}?%24format=JSON${query ? '&' + query : ''}`, {
     headers: { authorization: `Bearer ${token}`, 'accept-encoding': 'gzip' },
   });
 
@@ -132,6 +133,43 @@ async function route(env, ctx, url) {
     // 列車即時誤點（快取 30 秒）
     if (p === '/api/delay') {
       return await tdxGet(env, ctx, '/v2/Rail/TRA/LiveTrainDelay', 30);
+    }
+
+    // ---------- 公車（預設高雄 Kaohsiung）----------
+    if (p.startsWith('/api/bus/')) {
+      const city = url.searchParams.get('city') || 'Kaohsiung';
+      if (!/^[A-Za-z]{3,30}$/.test(city)) return json({ error: '縣市參數錯誤' }, 400);
+
+      // 路線清單：/api/bus/routes?city=Kaohsiung（只取需要的欄位，縮小資料量）
+      if (p === '/api/bus/routes') {
+        return await tdxGet(
+          env, ctx, `/v2/Bus/Route/City/${city}`, 86400,
+          '%24select=RouteUID,RouteName,DepartureStopNameZh,DestinationStopNameZh'
+        );
+      }
+
+      // 路線名稱：中英數字與少數符號，最長 20 字
+      const route = url.searchParams.get('route') || '';
+      if (!/^[一-鿿A-Za-z0-9\-()（）]{1,20}$/.test(route)) {
+        return json({ error: '路線名稱格式錯誤' }, 400);
+      }
+      const name = encodeURIComponent(route);
+
+      // 路線站序：/api/bus/stops?city=Kaohsiung&route=紅9
+      if (p === '/api/bus/stops') {
+        return await tdxGet(
+          env, ctx, `/v2/Bus/StopOfRoute/City/${city}/${name}`, 3600,
+          '%24select=RouteName,SubRouteUID,SubRouteName,Direction,Stops'
+        );
+      }
+
+      // 即時到站時間：/api/bus/eta?city=Kaohsiung&route=紅9（資料很即時，只快取 15 秒）
+      if (p === '/api/bus/eta') {
+        return await tdxGet(
+          env, ctx, `/v2/Bus/EstimatedTimeOfArrival/City/${city}/${name}`, 15,
+          '%24select=RouteName,SubRouteUID,Direction,StopUID,StopStatus,EstimateTime,NextBusTime,UpdateTime'
+        );
+      }
     }
 
     return json({ error: 'Not found' }, 404);

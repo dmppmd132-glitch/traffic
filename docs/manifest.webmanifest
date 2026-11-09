@@ -1,7 +1,7 @@
 {
-  "name": "台鐵時刻",
-  "short_name": "台鐵時刻",
-  "description": "台鐵起迄站時刻查詢，記住常用路線",
+  "name": "台鐵公車時刻",
+  "short_name": "台鐵公車",
+  "description": "台鐵起迄站時刻與高雄公車即時到站，記住常用路線",
   "lang": "zh-Hant",
   "start_url": "./",
   "scope": "./",
