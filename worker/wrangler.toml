@@ -10,3 +10,7 @@ ALLOWED_ORIGIN = "https://dmppmd132-glitch.github.io"
 # 金鑰請勿寫在這裡，改用指令設定：
 #   npx wrangler secret put TDX_ID
 #   npx wrangler secret put TDX_SECRET
+
+# 讓 Worker 自動跑在離 TDX（台灣）較近的機房，降低延遲
+[placement]
+mode = "smart"

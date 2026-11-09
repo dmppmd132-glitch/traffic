@@ -25,10 +25,27 @@
     favs: 'tra.favorites',     // 常用路線 [{from, to}]
     hist: 'tra.history',       // 最近查詢 [{from, to}]
     stations: 'tra.stations',  // 車站清單快取 {t, list}
+    tt: 'tra.timetables',      // 時刻表快取 { "起-迄-日期": {t, rows} }
   };
   const MAX_FAV = 8;
   const MAX_HIST = 8;
   const STATION_TTL = 7 * 24 * 3600 * 1000; // 車站清單快取 7 天
+  const TT_TTL = 6 * 3600 * 1000;           // 時刻表快取 6 小時（同一天的時刻表不常變）
+  const MAX_TT = 20;                        // 最多保留 20 筆時刻表快取
+
+  // 讀取 / 寫入時刻表快取（存的是解析後的精簡資料，體積很小）
+  function readTT(key) {
+    const e = store.get(KEY.tt, {})[key];
+    return e && Date.now() - e.t < TT_TTL ? e.rows : null;
+  }
+  function writeTT(key, rows) {
+    const all = store.get(KEY.tt, {});
+    all[key] = { t: Date.now(), rows };
+    const keep = Object.keys(all).sort((a, b) => all[b].t - all[a].t).slice(0, MAX_TT);
+    const out = {};
+    for (const k of keep) out[k] = all[k];
+    store.set(KEY.tt, out);
+  }
 
   // ---------- 狀態 ----------
   let stations = [];          // [{id, name}]
@@ -297,6 +314,8 @@
     }
   }
 
+  let searchSeq = 0;
+
   async function search() {
     const route = currentRoute();
     if (!route) {
@@ -310,17 +329,30 @@
     const date = $('dateInput').value || todayStr();
     const time = $('timeInput').value || '00:00';
 
+    const seq = ++searchSeq; // 連續按查詢時，只採用最後一次的結果
     setMsg('查詢中…', true);
     $('results').replaceChildren();
 
     try {
-      const data = await api(`/api/timetable?from=${route.from}&to=${route.to}&date=${date}`);
-      const rows = parseTimetable(data, route.from, route.to);
-      const delayMap = date === todayStr() ? await fetchDelays() : null;
+      const q = { ...route, date, time };
 
+      // 誤點資料與時刻表「同時」載入，不再排隊等待（fetchDelays 失敗時回傳 null，不會丟錯）
+      const delayPromise = date === todayStr() ? fetchDelays() : Promise.resolve(null);
+
+      // 先找本機快取，沒有才向伺服器要
+      const ttKey = `${route.from}-${route.to}-${date}`;
+      let rows = readTT(ttKey);
+      if (!rows) {
+        const data = await api(`/api/timetable?from=${route.from}&to=${route.to}&date=${date}`);
+        rows = parseTimetable(data, route.from, route.to);
+        if (rows.length) writeTT(ttKey, rows);
+      }
+      if (seq !== searchSeq) return;
+
+      // 時刻表先顯示，不必等誤點資料
       lastRows = rows;
-      lastQuery = { ...route, date, time };
-      renderResults(rows, lastQuery, delayMap);
+      lastQuery = q;
+      renderResults(rows, q, null);
       setMsg('');
 
       // 記住這次的路線
@@ -328,6 +360,10 @@
       pushHistory(route);
       renderChips();
       refreshFavButton();
+
+      // 誤點資料到了再補上
+      const delayMap = await delayPromise;
+      if (seq === searchSeq && delayMap) renderResults(rows, q, delayMap);
     } catch (err) {
       setMsg(navigator.onLine ? '查詢失敗：' + err.message : '目前離線，無法查詢');
     }
