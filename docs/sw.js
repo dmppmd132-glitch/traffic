@@ -1,6 +1,6 @@
 // Service Worker：App 外殼快取 + API 網路優先
 // 每次改了前端檔案，記得把 VERSION 加一，舊快取才會被清掉
-const VERSION = 'v4';
+const VERSION = 'v5';
 const SHELL = `tra-shell-${VERSION}`;
 const DATA = `tra-data-${VERSION}`;
 
@@ -64,19 +64,17 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // 靜態檔案：先用快取，同時背景更新
+  // 靜態檔案（HTML / CSS / JS）：網路優先，確保各檔案版本一致；離線時才用快取
+  // cache: 'no-cache' 會向伺服器確認是否有新版（沒變就回 304，很快），不會吃到瀏覽器的舊快取
   e.respondWith(
-    caches.match(req).then((hit) => {
-      const net = fetch(req)
-        .then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(SHELL).then((c) => c.put(req, copy));
-          }
-          return res;
-        })
-        .catch(() => hit);
-      return hit || net;
-    })
+    fetch(req, { cache: 'no-cache' })
+      .then((res) => {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(SHELL).then((c) => c.put(req, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(req).then((hit) => hit || caches.match('index.html')))
   );
 });

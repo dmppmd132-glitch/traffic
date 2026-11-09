@@ -159,6 +159,7 @@ button.link { border: 0; background: none; padding: 0 0 0 8px; color: var(--bran
   padding: 2px 8px;
   border-radius: 8px;
   background: var(--bg);
+  white-space: nowrap;
 }
 .eta.none { color: var(--sub); font-weight: 400; font-size: 13px; }
 .eta.soon { color: var(--warn); }
