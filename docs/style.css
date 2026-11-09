@@ -225,15 +225,4 @@ button.link { border: 0; background: none; padding: 0 0 0 8px; color: var(--bran
 .stoppop b { display: block; font-size: 14px; }
 .stoppop span { font-size: 13px; }
 
-/* 底圖單色化（只影響圖磚，不影響路線與公車標記）*/
-/* 淺色模式：灰階淡化，讓藍色路線突出 */
-.bus-map .leaflet-tile-pane {
-  filter: grayscale(1) brightness(1.04) contrast(.85);
-}
-
-/* 深色模式：灰階後反相，變成深灰底、淡灰道路 */
-@media (prefers-color-scheme: dark) {
-  .bus-map .leaflet-tile-pane {
-    filter: grayscale(1) invert(1) brightness(.78) contrast(.95);
-  }
-}
+/* 底圖改用 Esri 灰階簡易街道圖（淺色 / 深色由 bus.js 自動切換圖磚，不再使用 CSS 濾鏡）*/

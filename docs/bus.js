@@ -329,17 +329,31 @@
     return leafletReady;
   }
 
-  // 底圖：預設使用 OpenStreetMap 官方圖磚（免金鑰，適合小量使用）
-  // 想換成其他圖磚（例如國土測繪中心），可在 config.js 設定 window.TRA_MAP_TILE_URL 與 window.TRA_MAP_ATTRIBUTION
-  // 深色模式不換圖磚，而是用 CSS 濾鏡把底圖反相成深色（見 style.css）
+  // 底圖：預設使用 Esri 灰階簡易街道圖（免金鑰，只有道路與地名，沒有雜色）
+  // 淺色 / 深色模式會依系統設定自動切換對應圖磚
+  // 想換成其他圖磚，可在 config.js 設定 window.TRA_MAP_TILE_URL 與 window.TRA_MAP_ATTRIBUTION
+  const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
+  const darkMQ = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
   function setTiles() {
     if (!busMap) return;
     if (tiles) busMap.removeLayer(tiles);
-    const url = window.TRA_MAP_TILE_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-    const attribution = window.TRA_MAP_ATTRIBUTION ||
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> 貢獻者';
-    tiles = L.tileLayer(url, { maxZoom: 19, attribution }).addTo(busMap);
+    if (window.TRA_MAP_TILE_URL) {
+      const attribution = window.TRA_MAP_ATTRIBUTION || '';
+      tiles = L.tileLayer(window.TRA_MAP_TILE_URL, { maxZoom: 19, attribution }).addTo(busMap);
+      return;
+    }
+    const dark = !!(darkMQ && darkMQ.matches);
+    const name = dark ? 'World_Dark_Gray' : 'World_Light_Gray';
+    const opt = { maxZoom: 19, maxNativeZoom: 16 };
+    tiles = L.layerGroup([
+      L.tileLayer(`${ESRI}${name}_Base/MapServer/tile/{z}/{y}/{x}`, {
+        ...opt,
+        attribution: 'Tiles &copy; Esri, HERE, Garmin, OpenStreetMap contributors'
+      }),
+      L.tileLayer(`${ESRI}${name}_Reference/MapServer/tile/{z}/{y}/{x}`, { ...opt, pane: 'shadowPane' })
+    ]).addTo(busMap);
   }
+  if (darkMQ && darkMQ.addEventListener) darkMQ.addEventListener('change', () => setTiles());
 
   function ensureMap() {
     if (busMap) return;
