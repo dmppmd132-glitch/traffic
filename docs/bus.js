@@ -222,6 +222,11 @@
           label: group.SubRouteName && group.SubRouteName.Zh_tw,
           dep,
           end: (last && (last.ArrivalTime || last.DepartureTime) || '').slice(0, 5),
+          stopTimes: stops.map((s) => ({
+            uid: s.StopUID || '',
+            seq: Number(s.StopSequence),
+            time: (s.DepartureTime || s.ArrivalTime || '').slice(0, 5),
+          })).filter((s) => s.time),
         });
       }
     }
@@ -238,13 +243,23 @@
     const entry = cur.entries[cur.active];
     const shown = rows.filter((r) => r.direction === entry.dir && (!r.sub || r.sub === entry.sub));
     const use = shown.length ? shown : rows.filter((r) => r.direction === entry.dir);
-    box.replaceChildren(...(use.length ? use : rows).map((r) => {
+    const selected = use.length ? use : rows;
+    const byStop = new Map();
+    selected.forEach((trip) => trip.stopTimes.forEach((stop) => {
+      const key = stop.uid || String(stop.seq);
+      if (!byStop.has(key)) byStop.set(key, { uid: stop.uid, seq: stop.seq, times: [] });
+      byStop.get(key).times.push(stop.time);
+    }));
+    const rowsByStop = [...byStop.values()].sort((a, b) => a.seq - b.seq);
+    box.replaceChildren(...rowsByStop.map((s) => {
+      const station = entry.stops.find((x) => (s.uid && x.uid === s.uid) || x.seq === s.seq);
       const row = document.createElement('div');
-      row.className = 'schedule-row';
-      row.innerHTML = `<span class="schedule-time">${r.dep}</span><span>${r.label || entry.label}</span><span class="schedule-end">${r.end ? `抵達 ${r.end}` : ''}</span>`;
+      row.className = 'schedule-row stop-schedule';
+      const times = s.times.slice(0, 8).join('　');
+      row.innerHTML = `<span class="stop-seq">${s.seq}</span><span class="schedule-stop-name">${station ? station.name : `第 ${s.seq} 站`}</span><span class="schedule-times">${times}${s.times.length > 8 ? ' …' : ''}</span>`;
       return row;
     }));
-    $('busScheduleStatus').textContent = `${use.length || rows.length} 班`;
+    $('busScheduleStatus').textContent = `${rowsByStop.length} 站／${selected.length} 班`;
   }
 
   function renderMap(entry, shapeData, vehicles) {

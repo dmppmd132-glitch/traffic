@@ -186,6 +186,10 @@ button.link { border: 0; background: none; padding: 0 0 0 8px; color: var(--bran
 .schedule-row:last-child { border-bottom: 0; }
 .schedule-time { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .schedule-end { color: var(--sub); font-size: 12px; }
+.stop-schedule { grid-template-columns: 2em 1fr; }
+.stop-seq { color: var(--sub); font-size: 12px; text-align: right; }
+.schedule-stop-name { font-weight: 600; }
+.schedule-times { grid-column: 2; color: var(--brand); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 420px) {
   .schedule-row { grid-template-columns: 4em 1fr; }
   .schedule-end { grid-column: 2; }
