@@ -87,7 +87,9 @@ async function tdxGet(env, ctx, path, ttl, query = '') {
   });
 
   if (!upstream.ok) {
-    return json({ error: 'TDX 回應錯誤', status: upstream.status }, 502);
+    let detail = '';
+    try { detail = (await upstream.text()).slice(0, 200); } catch { /* 忽略 */ }
+    return json({ error: 'TDX 回應錯誤', status: upstream.status, path, detail }, 502);
   }
 
   const res = new Response(upstream.body, {
@@ -223,6 +225,25 @@ async function route(env, ctx, url) {
           env, ctx, `/v2/Bus/EstimatedTimeOfArrival/City/${city}/${name}`, 15,
           '%24select=RouteName,SubRouteUID,Direction,StopUID,StopStatus,EstimateTime,NextBusTime,UpdateTime'
         );
+      }
+    }
+
+    // ---------- 高雄捷運 / 輕軌（KRTC = 高雄捷運，KLRT = 高雄輕軌）----------
+    if (p.startsWith('/api/metro/')) {
+      const op = url.searchParams.get('op') || 'KRTC';
+      if (!/^(KRTC|KLRT)$/.test(op)) return json({ error: '營運商參數錯誤' }, 400);
+
+      // 各路線與車站（一天快取）：/api/metro/stations?op=KRTC
+      if (p === '/api/metro/stations') {
+        const r = await tdxGet(env, ctx, `/v2/Rail/Metro/StationOfLine/${op}`, 86400);
+        if (r.ok) return r;
+        // 備援：改抓單純的車站清單（前端會依站號字母自動分線）
+        return await tdxGet(env, ctx, `/v2/Rail/Metro/Station/${op}`, 86400);
+      }
+
+      // 即時到站看板（整個營運商一次回傳，快取 15 秒）：/api/metro/live?op=KRTC
+      if (p === '/api/metro/live') {
+        return await tdxGet(env, ctx, `/v2/Rail/Metro/LiveBoard/${op}`, 15);
       }
     }
 
