@@ -28,7 +28,11 @@
     const timer = setTimeout(() => ctrl.abort(), ms);
     try {
       const res = await fetch(base + path, { signal: ctrl.signal });
-      if (!res.ok) throw new Error('伺服器回應 ' + res.status);
+      if (!res.ok) {
+        let msg = '伺服器回應 ' + res.status;
+        try { const b = await res.json(); if (b && b.status) msg += `（TDX ${b.status}）`; } catch { /* 忽略 */ }
+        throw new Error(msg);
+      }
       return await res.json();
     } catch (e) {
       throw new Error(e.name === 'AbortError' ? '連線逾時' : e.message);
@@ -61,15 +65,36 @@
 
   // ---------- 車站清單 ----------
   function parseLines(data) {
-    return pickArray(data).map((l) => {
-      const id = l.LineID || l.LineNo || '';
-      const name = nm(l.LineName) || id;
-      const stations = (l.Stations || [])
-        .map((s) => ({ id: s.StationID, name: nm(s.StationName), seq: Number(s.Sequence) || 0 }))
-        .filter((s) => s.id && s.name)
-        .sort((a, b) => a.seq - b.seq);
-      return { id, name, color: lineColor(id, name), stations };
-    }).filter((l) => l.stations.length);
+    const arr = pickArray(data);
+    // 正常格式：每筆是一條路線，裡面有 Stations
+    if (arr.some((l) => Array.isArray(l.Stations))) {
+      return arr.map((l) => {
+        const id = l.LineID || l.LineNo || '';
+        const name = nm(l.LineName) || id;
+        const stations = (l.Stations || [])
+          .map((s) => ({ id: s.StationID, name: nm(s.StationName), seq: Number(s.Sequence) || 0 }))
+          .filter((s) => s.id && s.name)
+          .sort((a, b) => a.seq - b.seq);
+        return { id, name, color: lineColor(id, name), stations };
+      }).filter((l) => l.stations.length);
+    }
+    // 備援格式：單純的車站清單，依站號開頭字母分線（R 紅線、O 橘線、C 環狀輕軌）
+    const NAMES = { R: '紅線', O: '橘線', C: '環狀輕軌' };
+    const groups = new Map();
+    for (const s of arr) {
+      const id = s.StationID;
+      const name = nm(s.StationName);
+      if (!id || !name) continue;
+      const code = (/^[A-Za-z]+/.exec(id) || ['其他'])[0].toUpperCase();
+      if (!groups.has(code)) groups.set(code, []);
+      groups.get(code).push({ id, name, seq: parseInt(String(id).replace(/\D/g, ''), 10) || 0 });
+    }
+    return [...groups.entries()].map(([code, list]) => ({
+      id: code,
+      name: NAMES[code] || code,
+      color: lineColor(code, NAMES[code]),
+      stations: list.sort((a, b) => a.seq - b.seq),
+    }));
   }
 
   async function loadLines(o) {
