@@ -1,6 +1,6 @@
 // Service Worker：App 外殼快取 + API 網路優先
 // 每次改了前端檔案，記得把 VERSION 加一，舊快取才會被清掉
-const VERSION = 'v16';
+const VERSION = 'v17';
 const SHELL = `tra-shell-${VERSION}`;
 const DATA = `tra-data-${VERSION}`;
 
