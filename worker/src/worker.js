@@ -163,6 +163,30 @@ async function route(env, ctx, url) {
         );
       }
 
+      // 路線線形：用於地圖繪製實際路線（快取一天）
+      if (p === '/api/bus/shape') {
+        return await tdxGet(
+          env, ctx, `/v2/Bus/Shape/City/${city}/${name}`, 86400,
+          '%24select=RouteName,SubRouteUID,Direction,Geometry'
+        );
+      }
+
+      // 路線車輛位置：用於地圖上的公車圖示（快取 15 秒）
+      if (p === '/api/bus/vehicle') {
+        return await tdxGet(
+          env, ctx, `/v2/Bus/Vehicle/City/${city}/${name}`, 15,
+          '%24select=PlateNumb,RouteUID,RouteName,SubRouteUID,Direction,Position,Speed,Azimuth,UpdateTime'
+        );
+      }
+
+      // 路線預定時刻：用於站站時刻表（快取一天）
+      if (p === '/api/bus/schedule') {
+        return await tdxGet(
+          env, ctx, `/v2/Bus/Schedule/City/${city}/${name}`, 86400,
+          '%24select=RouteName,SubRouteUID,SubRouteName,Direction,Timetables'
+        );
+      }
+
       // 即時到站時間：/api/bus/eta?city=Kaohsiung&route=紅9（資料很即時，只快取 15 秒）
       if (p === '/api/bus/eta') {
         return await tdxGet(

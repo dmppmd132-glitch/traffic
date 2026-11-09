@@ -60,6 +60,9 @@
   let cur = null;       // 目前開啟的路線 {route, entries, active, etaMap, updated}
   let started = false;  // 公車分頁是否已初始化
   let openSeq = 0;      // 連續點選路線時，只採用最後一次的結果
+  let busMap = null;
+  let mapLayers = [];
+  let vehicleMarkers = new Map();
   const normQ = (s) => (s || '').trim().toLowerCase().replace(/\s+/g, '');
 
   function setMsg(text, info = false) {
@@ -142,6 +145,8 @@
             uid: s.StopUID,
             name: (s.StopName && s.StopName.Zh_tw) || '',
             seq: s.StopSequence,
+            lat: Number(s.StopPosition && s.StopPosition.PositionLat),
+            lon: Number(s.StopPosition && s.StopPosition.PositionLon),
           }))
           .filter((s) => s.uid && s.name)
           .sort((a, b) => a.seq - b.seq);
@@ -164,6 +169,122 @@
       if (dup && e.subName) e.label += `（${e.subName}）`;
     }
     return entries;
+  }
+
+  function parseGeometry(data, routeName) {
+    const list = pickArray(data).filter((x) => !routeName || !x.RouteName || x.RouteName.Zh_tw === routeName);
+    const lines = [];
+    for (const item of list) {
+      const g = item.Geometry;
+      if (!g) continue;
+      let coords = g.coordinates || g.Coordinates || g;
+      if (typeof coords === 'string') {
+        try { coords = JSON.parse(coords); } catch { coords = null; }
+      }
+      if (!Array.isArray(coords)) continue;
+      const line = coords.map((p) => {
+        if (Array.isArray(p)) return [Number(p[1]), Number(p[0])];
+        return [Number(p.PositionLat || p.Lat), Number(p.PositionLon || p.Lon)];
+      }).filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+      if (line.length > 1) lines.push(line);
+    }
+    return lines;
+  }
+
+  function parseVehicles(data, routeName) {
+    return pickArray(data).filter((v) => {
+      const name = v.RouteName && v.RouteName.Zh_tw;
+      return (!routeName || !name || name === routeName) && v.Position &&
+        Number.isFinite(Number(v.Position.PositionLat)) && Number.isFinite(Number(v.Position.PositionLon));
+    });
+  }
+
+  function parseSchedule(data) {
+    const rows = [];
+    for (const group of pickArray(data)) {
+      const direction = group.Direction;
+      const timetables = group.Timetables || group.Trips || [];
+      for (const trip of timetables) {
+        const stops = trip.StopTimes || trip.Stops || [];
+        const first = stops.find((s) => Number(s.StopSequence) === 1) || stops[0];
+        const last = stops[stops.length - 1];
+        const dep = (first && (first.DepartureTime || first.ArrivalTime) || '').slice(0, 5);
+        if (!dep) continue;
+        rows.push({
+          direction,
+          sub: group.SubRouteUID || '',
+          label: group.SubRouteName && group.SubRouteName.Zh_tw,
+          dep,
+          end: (last && (last.ArrivalTime || last.DepartureTime) || '').slice(0, 5),
+        });
+      }
+    }
+    return rows.sort((a, b) => a.direction - b.direction || a.dep.localeCompare(b.dep));
+  }
+
+  function renderTimetable(rows) {
+    const box = $('busTimetable');
+    if (!rows.length) {
+      box.innerHTML = '<p class="empty">此路線目前沒有提供完整站站時刻資料，請以即時到站為準。</p>';
+      $('busScheduleStatus').textContent = '無資料';
+      return;
+    }
+    const entry = cur.entries[cur.active];
+    const shown = rows.filter((r) => r.direction === entry.dir && (!r.sub || r.sub === entry.sub));
+    const use = shown.length ? shown : rows.filter((r) => r.direction === entry.dir);
+    box.replaceChildren(...(use.length ? use : rows).map((r) => {
+      const row = document.createElement('div');
+      row.className = 'schedule-row';
+      row.innerHTML = `<span class="schedule-time">${r.dep}</span><span>${r.label || entry.label}</span><span class="schedule-end">${r.end ? `抵達 ${r.end}` : ''}</span>`;
+      return row;
+    }));
+    $('busScheduleStatus').textContent = `${use.length || rows.length} 班`;
+  }
+
+  function clearMap() {
+    mapLayers.forEach((layer) => layer.remove());
+    mapLayers = [];
+    vehicleMarkers.forEach((marker) => marker.remove());
+    vehicleMarkers.clear();
+  }
+
+  function renderMap(entry, shapeData, vehicles) {
+    if (!window.L) return;
+    if (!busMap) busMap = L.map('busMap', { zoomControl: true }).setView([22.6273, 120.3014], 12);
+    clearMap();
+    const points = entry.stops.filter((s) => s.lat && s.lon).map((s) => [s.lat, s.lon]);
+    const lines = parseGeometry(shapeData, cur.route);
+    lines.forEach((line) => mapLayers.push(L.polyline(line, { color: '#0b3d91', weight: 5, opacity: .75 }).addTo(busMap)));
+    if (!lines.length && points.length > 1) mapLayers.push(L.polyline(points, { color: '#0b3d91', weight: 4, dashArray: '8 8' }).addTo(busMap));
+    points.forEach((point, i) => {
+      const s = entry.stops.filter((x) => x.lat && x.lon)[i];
+      const marker = L.circleMarker(point, { radius: 6, color: '#0b3d91', fillColor: '#fff', fillOpacity: 1, weight: 3 }).addTo(busMap);
+      marker.bindPopup(`<strong>${s.seq}. ${s.name}</strong><br>${etaInfo(lookupEta(cur.etaMap, entry, s.uid)).text}`);
+      mapLayers.push(marker);
+    });
+    parseVehicles(vehicles, cur.route).forEach((v, i) => {
+      const p = [Number(v.Position.PositionLat), Number(v.Position.PositionLon)];
+      const icon = L.divIcon({ className: 'bus-marker', html: '<span>🚌</span>', iconSize: [30, 30], iconAnchor: [15, 15] });
+      const marker = L.marker(p, { icon }).addTo(busMap);
+      marker.bindPopup(`<strong>公車 ${v.PlateNumb || i + 1}</strong><br>方向：${v.Direction === 0 ? '去程' : '返程'}`);
+      vehicleMarkers.set(v.PlateNumb || String(i), marker);
+    });
+    if (points.length) busMap.fitBounds(points, { padding: [20, 20] });
+    $('busMapStatus').textContent = `${points.length} 個站牌、${vehicleMarkers.size} 輛公車`;
+    setTimeout(() => busMap.invalidateSize(), 50);
+  }
+
+  async function loadMapAndSchedule(entry) {
+    $('busMapStatus').textContent = '載入地圖中…';
+    $('busScheduleStatus').textContent = '載入中…';
+    const [shape, vehicles, schedule] = await Promise.all([
+      api(apiQ('shape', cur.route)).catch(() => []),
+      api(apiQ('vehicle', cur.route)).catch(() => []),
+      api(apiQ('schedule', cur.route)).catch(() => []),
+    ]);
+    if (!cur || cur.entries[cur.active] !== entry) return;
+    renderMap(entry, shape, vehicles);
+    renderTimetable(parseSchedule(schedule));
   }
 
   // ---------- 到站時間 ----------
@@ -390,6 +511,7 @@
       })
     );
     renderStopList();
+    loadMapAndSchedule(cur.entries[cur.active]);
   }
 
   function renderStopList() {
@@ -457,6 +579,7 @@
     cur.etaMap = map;
     cur.updated = new Date();
     renderStopList();
+    if (busMap) loadMapAndSchedule(cur.entries[cur.active]);
   }
 
   // ---------- 分頁切換 ----------

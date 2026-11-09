@@ -9,6 +9,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -103,6 +104,21 @@
         <div id="busDirTabs" class="chips"></div>
         <p id="busUpdated" class="msg info"></p>
       </div>
+      <section class="card bus-map-card">
+        <div class="map-head">
+          <h2>路線動態</h2>
+          <span id="busMapStatus" class="map-status">載入地圖中…</span>
+        </div>
+        <div id="busMap" class="bus-map" aria-label="公車路線地圖"></div>
+        <p class="map-note">站牌為藍色，公車動態位置會以公車圖示顯示；資料每 20 秒更新。</p>
+      </section>
+      <section class="card" id="busTimetableCard">
+        <div class="map-head">
+          <h2>站站時刻表</h2>
+          <span id="busScheduleStatus" class="map-status">載入中…</span>
+        </div>
+        <div id="busTimetable" class="bus-timetable"></div>
+      </section>
       <div id="busStops"></div>
     </section>
   </main>
@@ -110,6 +126,7 @@
   <datalist id="stationList"></datalist>
   <script src="config.js"></script>
   <script src="app.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="bus.js"></script>
 </body>
 </html>
