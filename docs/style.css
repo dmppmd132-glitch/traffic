@@ -239,3 +239,7 @@ button.outline { color: var(--brand); border-color: var(--brand); }
 .stoppop span { font-size: 13px; }
 
 /* 底圖改用 Esri 灰階簡易街道圖（淺色 / 深色由 bus.js 自動切換圖磚，不再使用 CSS 濾鏡）*/
+
+.local-title { background: var(--bg); }
+.local-title .schedule-stop-name { color: var(--brand); }
+.local-title small { color: var(--sub); font-weight: 400; }

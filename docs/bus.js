@@ -229,8 +229,23 @@
       .filter((b) => b.status !== 99 && b.duty !== 2); // 非營運 / 已收班
   }
 
+  const DAY_KEYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const DAY_ZH = { Monday: '一', Tuesday: '二', Wednesday: '三', Thursday: '四', Friday: '五', Saturday: '六', Sunday: '日' };
+  const runsOn = (sd, key) => !sd || sd[key] === 1 || sd[key] === true;
+  const dayLabel = (sd) => {
+    if (!sd) return '';
+    const days = WEEK.filter((k) => runsOn(sd, k));
+    if (days.length === 7) return '每日';
+    if (days.length === 5 && !runsOn(sd, 'Saturday') && !runsOn(sd, 'Sunday')) return '平日';
+    if (days.length === 2 && runsOn(sd, 'Saturday') && runsOn(sd, 'Sunday')) return '假日';
+    return days.length ? '週' + days.map((k) => DAY_ZH[k]).join('') : '';
+  };
+
   function parseSchedule(data) {
     const rows = [];
+    const freqs = [];
+    const today = DAY_KEYS[new Date().getDay()];
     for (const group of pickArray(data)) {
       const direction = group.Direction;
       const timetables = group.Timetables || group.Trips || [];
@@ -244,6 +259,7 @@
           direction,
           sub: group.SubRouteUID || '',
           label: group.SubRouteName && group.SubRouteName.Zh_tw,
+          service: trip.ServiceDay || group.ServiceDay || null,
           dep,
           end: (last && (last.ArrivalTime || last.DepartureTime) || '').slice(0, 5),
           stopTimes: stops.map((s) => ({
@@ -253,18 +269,113 @@
           })).filter((s) => s.time),
         });
       }
+      // 班距式班表（例如「每 10–15 分鐘一班」），沒有逐站時間
+      for (const f of group.Frequencys || group.Frequencies || []) {
+        freqs.push({
+          direction,
+          sub: group.SubRouteUID || '',
+          start: (f.StartTime || '').slice(0, 5),
+          end: (f.EndTime || '').slice(0, 5),
+          min: f.MinHeadwayMins,
+          max: f.MaxHeadwayMins,
+          service: f.ServiceDay || group.ServiceDay || null,
+        });
+      }
     }
-    return rows.sort((a, b) => a.direction - b.direction || a.dep.localeCompare(b.dep));
+    // 只留今天有行駛的班次；若篩完沒有，就保留全部避免整個空白
+    const todayRows = rows.filter((r) => runsOn(r.service, today));
+    const out = (todayRows.length ? todayRows : rows)
+      .sort((a, b) => a.direction - b.direction || a.dep.localeCompare(b.dep));
+    const todayFreqs = freqs.filter((f) => runsOn(f.service, today));
+    out.freqs = (todayFreqs.length ? todayFreqs : freqs)
+      .sort((a, b) => a.direction - b.direction || a.start.localeCompare(b.start));
+    return out;
+  }
+
+  // ---------- 手動時刻表（schedule-local.json）：公開資料沒有該路線班表時使用 ----------
+  let localSchedulePromise = null;
+  function loadLocalSchedule() {
+    if (!localSchedulePromise) {
+      localSchedulePromise = fetch('schedule-local.json', { cache: 'no-cache' })
+        .then((r) => (r.ok ? r.json() : {}))
+        .catch(() => ({}));
+    }
+    return localSchedulePromise;
+  }
+
+  const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(t); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+  const fmtMin = (n) => `${String(Math.floor(n / 60) % 24).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+
+  function renderLocalSchedule(info, entry) {
+    const box = $('busTimetable');
+    const groups = (info.directions && (info.directions[String(entry.dir)] || info.directions[entry.dir])) || [];
+    if (!groups.length) return false;
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    const chips = (list) => list.map((t) => {
+      const m = toMin(t);
+      return `<span class="t${m !== null && m < nowMin ? ' past' : ''}">${t}</span>`;
+    }).join('');
+    const rows = [];
+    if (info.from) {
+      const head = document.createElement('div');
+      head.className = 'schedule-row stop-schedule';
+      head.innerHTML = `<span class="stop-seq"></span><span class="schedule-end">${info.updated ? '資料日期 ' + info.updated : '手動班表'}</span>`;
+      rows.push(head);
+    }
+    for (const g of groups) {
+      const title = document.createElement('div');
+      title.className = 'schedule-row stop-schedule local-title';
+      title.innerHTML = `<span class="stop-seq"></span><span class="schedule-stop-name">${g.days || '班次'}${g.note ? '　<small>' + g.note + '</small>' : ''}</span>`;
+      rows.push(title);
+      const stops = g.stops || [];
+      if (stops.length) {
+        // 逐站時間：每站可直接寫 times，或只寫 offset（距離起點發車的分鐘數），由發車時間自動推算
+        stops.forEach((st, i) => {
+          let list = st.times;
+          if (!list || !list.length) {
+            const off = Number(st.offset) || 0;
+            list = (g.times || []).map((t) => { const m = toMin(t); return m === null ? t : fmtMin(m + off); });
+          }
+          const row = document.createElement('div');
+          row.className = 'schedule-row stop-schedule';
+          row.innerHTML = `<span class="stop-seq">${i + 1}</span><span class="schedule-stop-name">${st.name || `第 ${i + 1} 站`}</span><span class="schedule-times">${chips(list)}</span>`;
+          rows.push(row);
+        });
+      } else {
+        const row = document.createElement('div');
+        row.className = 'schedule-row stop-schedule';
+        row.innerHTML = `<span class="stop-seq"></span><span class="schedule-stop-name">${info.from ? info.from + ' 發車' : '發車時間'}</span><span class="schedule-times">${chips(g.times || [])}</span>`;
+        rows.push(row);
+      }
+    }
+    box.replaceChildren(...rows);
+    $('busScheduleStatus').textContent = '手動班表';
+    return true;
   }
 
   function renderTimetable(rows) {
     const box = $('busTimetable');
+    const entry = cur.entries[cur.active];
     if (!rows.length) {
-      box.innerHTML = '<p class="empty">此路線目前沒有提供完整站站時刻資料，請以即時到站為準。</p>';
+      const all = rows.freqs || [];
+      const fr = all.filter((f) => f.direction === entry.dir && (!f.sub || !entry.sub || f.sub === entry.sub));
+      const list = fr.length ? fr : all.filter((f) => f.direction === entry.dir);
+      if (list.length) {
+        box.replaceChildren(...list.map((f) => {
+          const row = document.createElement('div');
+          row.className = 'schedule-row';
+          const gap = f.min && f.max && f.min !== f.max ? `${f.min}–${f.max}` : (f.min || f.max || '');
+          row.innerHTML = `<span class="schedule-time">${f.start}</span><span>${f.end ? '至 ' + f.end : ''}　${gap ? '約每 ' + gap + ' 分鐘一班' : ''}</span><span class="schedule-end">${dayLabel(f.service)}</span>`;
+          return row;
+        }));
+        $('busScheduleStatus').textContent = '班距式班表';
+        return;
+      }
+      box.innerHTML = '<p class="empty">此路線的公開資料沒有提供站站時刻，請以即時到站為準。</p>';
       $('busScheduleStatus').textContent = '無資料';
+      console.info('bus schedule empty for', cur.route, cur.scheduleData);
       return;
     }
-    const entry = cur.entries[cur.active];
     const shown = rows.filter((r) => r.direction === entry.dir && (!r.sub || r.sub === entry.sub));
     const use = shown.length ? shown : rows.filter((r) => r.direction === entry.dir);
     const selected = use.length ? use : rows;
@@ -536,7 +647,14 @@
         const schedule = cur.scheduleData || (await api(apiQ('schedule', route)));
         if (stale()) return;
         if (pickArray(schedule).length) cur.scheduleData = schedule;
-        renderTimetable(parseSchedule(schedule));
+        const parsed = parseSchedule(schedule);
+        if (!parsed.length && !(parsed.freqs || []).length) {
+          const local = await loadLocalSchedule();
+          if (stale()) return;
+          const info = local[route];
+          if (info && renderLocalSchedule(info, entry)) return;
+        }
+        renderTimetable(parsed);
       } catch (err) {
         if (stale()) return;
         $('busTimetable').innerHTML = `<p class="empty">時刻表載入失敗（${err.message}），請稍後再試。</p>`;
