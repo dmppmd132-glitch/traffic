@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>台鐵時刻</title>
+  <meta name="theme-color" content="#0b3d91">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>台鐵時刻</h1>
+    <span id="netStatus" class="net" hidden>離線</span>
+  </header>
+
+  <main>
+    <section class="card" id="searchCard">
+      <div class="route">
+        <label>
+          <span>出發</span>
+          <input id="fromInput" list="stationList" placeholder="輸入車站" autocomplete="off" inputmode="text">
+        </label>
+        <button id="swapBtn" type="button" aria-label="對調起訖站">⇅</button>
+        <label>
+          <span>抵達</span>
+          <input id="toInput" list="stationList" placeholder="輸入車站" autocomplete="off" inputmode="text">
+        </label>
+      </div>
+
+      <div class="when">
+        <label>
+          <span>日期</span>
+          <input id="dateInput" type="date">
+        </label>
+        <label>
+          <span>時間</span>
+          <input id="timeInput" type="time">
+        </label>
+        <button id="nowBtn" type="button">現在</button>
+      </div>
+
+      <div class="actions">
+        <button id="searchBtn" type="button" class="primary">查詢</button>
+        <button id="favBtn" type="button" aria-pressed="false" title="加入常用路線">☆ 常用</button>
+      </div>
+      <p id="msg" class="msg" role="status"></p>
+    </section>
+
+    <section class="card" id="quickCard" hidden>
+      <div id="favBlock" hidden>
+        <h2>常用路線</h2>
+        <div id="favList" class="chips"></div>
+      </div>
+      <div id="histBlock" hidden>
+        <h2>最近查詢 <button id="clearHist" type="button" class="link">清除</button></h2>
+        <div id="histList" class="chips"></div>
+      </div>
+    </section>
+
+    <section id="results" aria-live="polite"></section>
+  </main>
+
+  <datalist id="stationList"></datalist>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# Cloudflare Workers 設定（只放 API 代理；前端在 GitHub Pages）
+name = "tra-timetable"
+main = "src/worker.js"
+compatibility_date = "2026-11-01"
+
+[vars]
+# 允許呼叫 API 的前端網域（GitHub Pages）
+ALLOWED_ORIGIN = "https://dmppmd132-glitch.github.io"
+
+# 金鑰請勿寫在這裡，改用指令設定：
+#   npx wrangler secret put TDX_ID
+#   npx wrangler secret put TDX_SECRET

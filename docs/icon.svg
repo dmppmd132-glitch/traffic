@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#0b3d91"/>
+  <!-- 簡單的列車圖示 -->
+  <rect x="136" y="110" width="240" height="250" rx="40" fill="#fff"/>
+  <rect x="166" y="150" width="180" height="96" rx="14" fill="#0b3d91"/>
+  <circle cx="198" cy="300" r="16" fill="#0b3d91"/>
+  <circle cx="314" cy="300" r="16" fill="#0b3d91"/>
+  <path d="M176 360 L136 410 M336 360 L376 410" stroke="#fff" stroke-width="22" stroke-linecap="round"/>
+</svg>
