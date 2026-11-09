@@ -990,10 +990,13 @@
   function setTab(tab) {
     $('railView').hidden = tab !== 'rail';
     $('busView').hidden = tab !== 'bus';
+    const mv = $('metroView');
+    if (mv) mv.hidden = tab !== 'metro';
     document.querySelectorAll('.tabs button').forEach((b) => {
       b.classList.toggle('on', b.dataset.tab === tab);
     });
     store.set(KEY.tab, tab);
+    document.dispatchEvent(new CustomEvent('tabchange', { detail: { tab } }));
     if (tab === 'bus') {
       const wasStarted = started;
       startBus();
@@ -1050,5 +1053,6 @@
   });
 
   // 還原上次使用的分頁
-  setTab(store.get(KEY.tab, 'rail') === 'bus' ? 'bus' : 'rail');
+  const savedTab = store.get(KEY.tab, 'rail');
+  setTab(savedTab === 'bus' || savedTab === 'metro' ? savedTab : 'rail');
 })();

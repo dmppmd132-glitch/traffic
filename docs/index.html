@@ -21,6 +21,7 @@
   <nav class="tabs" aria-label="交通工具">
     <button type="button" data-tab="rail" class="on">台鐵</button>
     <button type="button" data-tab="bus">公車</button>
+    <button type="button" data-tab="metro">捷運輕軌</button>
   </nav>
 
   <main id="railView">
@@ -130,9 +131,40 @@
     </section>
   </main>
 
+  <main id="metroView" hidden>
+    <section class="card" id="metroSearchCard">
+      <div id="metroOps" class="chips">
+        <button type="button" class="chip on" data-op="KRTC">高雄捷運</button>
+        <button type="button" class="chip" data-op="KLRT">高雄輕軌</button>
+      </div>
+      <div id="metroLines" class="chips suggest"></div>
+      <label class="metro-search">
+        <span>車站</span>
+        <input id="metroInput" placeholder="輸入車站名稱，例如 美麗島" autocomplete="off" inputmode="search" enterkeyhint="search">
+      </label>
+      <div id="metroSuggest" class="chips suggest"></div>
+      <p id="metroMsg" class="msg" role="status"></p>
+    </section>
+
+    <section class="card" id="metroFavCard" hidden>
+      <h2>常用車站</h2>
+      <div id="metroFavs" class="chips"></div>
+    </section>
+
+    <section class="card" id="metroBoardCard" hidden>
+      <div class="head">
+        <h2 id="metroStationTitle"></h2>
+        <button id="metroFavBtn" type="button" aria-pressed="false">☆ 常用</button>
+      </div>
+      <p id="metroUpdated" class="msg info"></p>
+      <div id="metroBoard"></div>
+    </section>
+  </main>
+
   <datalist id="stationList"></datalist>
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script src="bus.js"></script>
+  <script src="metro.js"></script>
 </body>
 </html>

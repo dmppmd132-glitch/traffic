@@ -243,3 +243,12 @@ button.outline { color: var(--brand); border-color: var(--brand); }
 .local-title { background: var(--bg); }
 .local-title .schedule-stop-name { color: var(--brand); }
 .local-title small { color: var(--sub); font-weight: 400; }
+
+/* ---------- 捷運 / 輕軌 ---------- */
+.metro-search { margin-top: 10px; }
+#metroOps .chip { font-weight: 600; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: baseline; }
+#metroFavBtn[aria-pressed="true"] { color: #e0a100; border-color: #e0a100; }
+#metroBoard .stoprow { padding: 10px 12px; }
+#metroBoard .stopname { font-weight: 600; }
+#metroBoard .eta { min-width: 4em; font-size: 15px; }
