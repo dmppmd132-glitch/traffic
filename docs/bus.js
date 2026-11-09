@@ -35,11 +35,20 @@
   const MAX_HIST = 8;
   const REFRESH_MS = 20000; // 到站時間自動更新間隔
 
-  async function api(path) {
+  async function api(path, ms = 20000) {
     const base = (window.TRA_API_BASE || '').replace(/\/$/, '');
-    const res = await fetch(base + path);
-    if (!res.ok) throw new Error('伺服器回應 ' + res.status);
-    return res.json();
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), ms); // 逾時就中止，讓畫面能顯示錯誤而不是一直轉圈
+    try {
+      const res = await fetch(base + path, { signal: ctl.signal });
+      if (!res.ok) throw new Error('伺服器回應 ' + res.status);
+      return await res.json();
+    } catch (err) {
+      if (err && err.name === 'AbortError') throw new Error('連線逾時');
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // 回應可能是陣列或物件包陣列，統一取出陣列
@@ -278,8 +287,10 @@
   }
 
   // ---------- 地圖（Leaflet 街道地圖，第一次顯示時才載入）----------
-  const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-  const LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  const LEAFLET_SOURCES = [
+    ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'],
+    ['https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css', 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'],
+  ];
   let leafletReady = null;
   let tiles = null;
   let routeLayer = null;
@@ -287,20 +298,34 @@
   let meLayer = null;
   let mapKey = '';
 
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const sc = document.createElement('script');
+      const timer = setTimeout(() => { sc.remove && sc.remove(); reject(new Error('逾時')); }, 12000);
+      sc.src = src;
+      sc.onload = () => { clearTimeout(timer); resolve(); };
+      sc.onerror = () => { clearTimeout(timer); sc.remove && sc.remove(); reject(new Error('失敗')); };
+      document.head.append(sc);
+    });
+  }
+
+  // 依序嘗試 unpkg、cdnjs 兩個來源
   function loadLeaflet() {
     if (window.L) return Promise.resolve();
     if (leafletReady) return leafletReady;
-    leafletReady = new Promise((resolve, reject) => {
-      const css = document.createElement('link');
-      css.rel = 'stylesheet';
-      css.href = LEAFLET_CSS;
-      document.head.append(css);
-      const sc = document.createElement('script');
-      sc.src = LEAFLET_JS;
-      sc.onload = () => resolve();
-      sc.onerror = () => { leafletReady = null; reject(new Error('地圖元件載入失敗，請檢查網路')); };
-      document.head.append(sc);
-    });
+    leafletReady = (async () => {
+      for (const [css, js] of LEAFLET_SOURCES) {
+        try {
+          const link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = css;
+          document.head.append(link);
+          await loadScript(js);
+          if (window.L) return;
+        } catch { /* 換下一個來源 */ }
+      }
+      throw new Error('地圖元件載入失敗，請檢查網路');
+    })().catch((err) => { leafletReady = null; throw err; });
     return leafletReady;
   }
 
@@ -394,8 +419,21 @@
       if (pts.length) busMap.fitBounds(pts, { padding: [30, 30] });
     }
 
+    if (posData === undefined) {
+      $('busMapStatus').textContent = '載入公車位置…'; // 路線先畫出來，公車稍後補上
+      return;
+    }
+    showBuses(entry, posData);
+  }
+
+  // 畫公車並更新狀態文字（posData 為 null 代表取得失敗）
+  function showBuses(entry, posData) {
+    if (!posData) {
+      $('busMapStatus').textContent = '公車位置暫時無法取得';
+      return;
+    }
     const n = drawBuses(entry, posData);
-    $('busMapStatus').textContent = posData ? (n ? `${n} 輛公車行駛中` : '目前沒有行駛中的公車') : '公車位置暫時無法取得';
+    $('busMapStatus').textContent = n ? `${n} 輛公車行駛中` : '目前沒有行駛中的公車';
   }
 
   // 只更新公車位置（不重畫路線），每次自動更新時呼叫
@@ -405,9 +443,7 @@
     const route = cur.route;
     const pos = await api(apiQ('pos', route)).catch(() => null);
     if (!pos || !cur || cur.route !== route || cur.entries[cur.active] !== entry) return;
-    drawBuses(entry, pos);
-    const n = parsePositions(pos, entry).length;
-    $('busMapStatus').textContent = n ? `${n} 輛公車行駛中` : '目前沒有行駛中的公車';
+    showBuses(entry, pos);
   }
 
   // 定位：在地圖上標出你的位置
@@ -427,36 +463,69 @@
     );
   }
 
-  // 載入地圖與時刻表：路線形狀與班表每條路線只抓一次，之後只更新公車位置
+  // 載入地圖與時刻表：兩者各自獨立，一邊慢或失敗不會卡住另一邊
+  // 路線形狀與班表每條路線只抓一次，之後的自動更新只更新公車位置
   async function loadMapAndSchedule(entry) {
+    const route = cur.route;
+    const stale = () => !cur || cur.route !== route || cur.entries[cur.active] !== entry;
     $('busMapStatus').textContent = '載入地圖中…';
     $('busScheduleStatus').textContent = '載入中…';
-    const route = cur.route;
-    const [shape, pos, schedule] = await Promise.all([
-      cur.shapeData || api(apiQ('shape', route)).catch(() => []),
-      api(apiQ('pos', route)).catch(() => null),
-      cur.scheduleData || api(apiQ('schedule', route)).catch(() => []),
-      loadLeaflet().catch((err) => { cur && (cur.mapErr = err.message); }),
-    ]);
-    if (!cur || cur.route !== route || cur.entries[cur.active] !== entry) return;
-    if (pickArray(shape).length) cur.shapeData = shape;       // 有資料才快取，失敗時下次會重試
-    if (pickArray(schedule).length) cur.scheduleData = schedule;
 
-    try {
-      if (!window.L) throw new Error(cur.mapErr || '地圖元件尚未載入');
-      renderMap(entry, shape, pos);
-    } catch (err) {
-      // 不能動 #busMap 的內容（Leaflet 在裡面），只更新狀態文字
-      $('busMapStatus').textContent = '地圖載入失敗：' + err.message;
-      console.error('bus map render failed', err);
-    }
-    try {
-      renderTimetable(parseSchedule(schedule));
-    } catch (err) {
-      $('busTimetable').innerHTML = '<p class="empty">時刻表資料格式暫時無法讀取，請稍後再試。</p>';
-      $('busScheduleStatus').textContent = '讀取失敗';
-      console.error('bus timetable render failed', err);
-    }
+    const mapTask = (async () => {
+      try {
+        // 公車位置、路線形狀同時開始抓，彼此不等待
+        let pos;
+        let posDone = false;
+        const posP = api(apiQ('pos', route)).catch(() => null);
+        const shapeP = cur.shapeData ? Promise.resolve(cur.shapeData) : api(apiQ('shape', route)).catch(() => []);
+        const draw = (shape) => {
+          renderMap(entry, shape, undefined);          // 畫路線與站牌（沒有形狀時用站牌連線）
+          if (posDone) showBuses(entry, pos);          // 公車位置若已先到，補畫上去
+        };
+
+        await loadLeaflet();
+        if (stale()) return;
+        draw(cur.shapeData || []);                     // 先畫出來，不必等路線形狀
+
+        posP.then((v) => {
+          pos = v;
+          posDone = true;
+          if (!stale() && busLayer) showBuses(entry, pos);
+        });
+
+        if (!cur.shapeData) {
+          const shape = await shapeP;
+          if (stale()) return;
+          if (pickArray(shape).length) {
+            cur.shapeData = shape;                     // 有資料才快取，失敗時下次會重試
+            mapKey = '';                               // 換成真實路線並重新縮放
+            draw(shape);
+          }
+        }
+        await posP;
+      } catch (err) {
+        if (stale()) return;
+        // 不能動 #busMap 的內容（Leaflet 在裡面），只更新狀態文字
+        $('busMapStatus').textContent = '地圖載入失敗：' + err.message;
+        console.error('bus map render failed', err);
+      }
+    })();
+
+    const scheduleTask = (async () => {
+      try {
+        const schedule = cur.scheduleData || (await api(apiQ('schedule', route)));
+        if (stale()) return;
+        if (pickArray(schedule).length) cur.scheduleData = schedule;
+        renderTimetable(parseSchedule(schedule));
+      } catch (err) {
+        if (stale()) return;
+        $('busTimetable').innerHTML = `<p class="empty">時刻表載入失敗（${err.message}），請稍後再試。</p>`;
+        $('busScheduleStatus').textContent = '讀取失敗';
+        console.error('bus timetable render failed', err);
+      }
+    })();
+
+    await Promise.all([mapTask, scheduleTask]);
   }
 
   // ---------- 到站時間 ----------
