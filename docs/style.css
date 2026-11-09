@@ -130,6 +130,19 @@ button.link { border: 0; background: none; padding: 0 0 0 8px; color: var(--bran
 .card .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .card .head h2 { margin: 0; font-size: 20px; color: var(--text); }
 #busFavRouteBtn[aria-pressed="true"] { color: #e0a100; border-color: #e0a100; }
+.head-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+button.outline { color: var(--brand); border-color: var(--brand); }
+@media (max-width: 380px) { .head-actions { gap: 6px; } .head-actions button { padding: 8px 10px; font-size: 14px; } }
+
+/* 站站時刻表：點按鈕開啟的底部面板 */
+.sheet { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.5); }
+.sheet[hidden] { display: none; }
+.sheet-card { width: 100%; max-width: 640px; max-height: 85vh; margin: 0; border-radius: 16px 16px 0 0; display: flex; flex-direction: column; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+.sheet-card .bus-timetable { overflow-y: auto; flex: 1; min-height: 0; }
+.sheet-card .map-head .link { margin-left: auto; font-size: 14px; padding: 4px 0 4px 8px; }
+.stop-schedule .schedule-times { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.7; }
+.stop-schedule .schedule-times .t { display: inline-block; margin-right: .9em; }
+.stop-schedule .schedule-times .t.past { color: var(--sub); opacity: .55; }
 #busFavStopBlock, #busFavRouteBlock { margin-bottom: 12px; }
 #busHistBlock { margin-bottom: 0; }
 

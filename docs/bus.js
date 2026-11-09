@@ -279,8 +279,13 @@
       const station = entry.stops.find((x) => (s.uid && x.uid === s.uid) || x.seq === s.seq);
       const row = document.createElement('div');
       row.className = 'schedule-row stop-schedule';
-      const times = s.times.slice(0, 8).join('　');
-      row.innerHTML = `<span class="stop-seq">${s.seq}</span><span class="schedule-stop-name">${station ? station.name : `第 ${s.seq} 站`}</span><span class="schedule-times">${times}${s.times.length > 8 ? ' …' : ''}</span>`;
+      const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+      const times = [...s.times].sort().map((t) => {
+        const m = /^(\d{1,2}):(\d{2})/.exec(t);
+        const past = m && (Number(m[1]) * 60 + Number(m[2])) < nowMin;
+        return `<span class="t${past ? ' past' : ''}">${t}</span>`;
+      }).join('');
+      row.innerHTML = `<span class="stop-seq">${s.seq}</span><span class="schedule-stop-name">${station ? station.name : `第 ${s.seq} 站`}</span><span class="schedule-times">${times}</span>`;
       return row;
     }));
     $('busScheduleStatus').textContent = `${rowsByStop.length} 站／${selected.length} 班`;
@@ -904,6 +909,15 @@
   });
 
   $('busLocate').addEventListener('click', locateMe);
+
+  // 站站時刻表：點按鈕開啟 / 關閉面板
+  const ttSheet = $('busTimetableSheet');
+  const openTimetable = () => { ttSheet.hidden = false; document.body.style.overflow = 'hidden'; };
+  const closeTimetable = () => { ttSheet.hidden = true; document.body.style.overflow = ''; };
+  $('busTimetableBtn').addEventListener('click', openTimetable);
+  $('busTimetableClose').addEventListener('click', closeTimetable);
+  ttSheet.addEventListener('click', (e) => { if (e.target === ttSheet) closeTimetable(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !ttSheet.hidden) closeTimetable(); });
 
   // 定時更新到站時間（只在公車分頁可見時）
   setInterval(() => {
