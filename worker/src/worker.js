@@ -1,4 +1,4 @@
-// Cloudflare Worker：TDX 代理 + 靜態檔案服務
+// Cloudflare Worker：TDX API 代理（前端在 GitHub Pages，這裡只負責 /api/*）
 // 前端不直接碰 TDX 金鑰，所有 TDX 請求都由這裡轉發並快取。
 // 需要的機密變數（用 wrangler secret put 設定）：TDX_ID、TDX_SECRET
 
@@ -8,28 +8,68 @@ const TOKEN_URL =
 
 // token 快取在 isolate 記憶體中（有效期約 24 小時，這裡提前 5 分鐘更新）
 let tokenCache = { token: null, exp: 0 };
+// 同一時間有多個請求要 token 時，共用同一次取得，避免被 TDX 限流（429）
+let tokenPromise = null;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// 向 TDX 取得新的 token；遇到 429 或 5xx 會稍等後重試，最多 3 次
+async function fetchToken(env) {
+  let lastStatus = 0;
+  for (let i = 0; i < 3; i++) {
+    const res = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: env.TDX_ID,
+        client_secret: env.TDX_SECRET,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        token: data.access_token,
+        exp: Date.now() + (data.expires_in - 300) * 1000,
+      };
+    }
+    lastStatus = res.status;
+    if (res.status !== 429 && res.status < 500) break; // 401、400 等重試也沒用
+    await sleep(800 * (i + 1));
+  }
+  throw new Error('TDX 取得 token 失敗：' + lastStatus);
+}
 
 async function getToken(env) {
   const now = Date.now();
   if (tokenCache.token && tokenCache.exp > now) return tokenCache.token;
 
-  const res = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'client_credentials',
-      client_id: env.TDX_ID,
-      client_secret: env.TDX_SECRET,
-    }),
-  });
-  if (!res.ok) throw new Error('TDX 取得 token 失敗：' + res.status);
+  // 選用：若有綁定 KV（變數名稱 TOKEN_KV），token 會跨 isolate 共用，最能避免 429
+  if (env.TOKEN_KV) {
+    try {
+      const saved = await env.TOKEN_KV.get('tdx_token', 'json');
+      if (saved && saved.exp > now) {
+        tokenCache = saved;
+        return saved.token;
+      }
+    } catch { /* KV 失敗就退回直接取 token */ }
+  }
 
-  const data = await res.json();
-  tokenCache = {
-    token: data.access_token,
-    exp: now + (data.expires_in - 300) * 1000,
-  };
-  return tokenCache.token;
+  if (!tokenPromise) {
+    tokenPromise = fetchToken(env)
+      .then(async (t) => {
+        tokenCache = t;
+        if (env.TOKEN_KV) {
+          try {
+            const ttl = Math.max(60, Math.floor((t.exp - Date.now()) / 1000));
+            await env.TOKEN_KV.put('tdx_token', JSON.stringify(t), { expirationTtl: ttl });
+          } catch { /* 忽略 */ }
+        }
+        return t;
+      })
+      .finally(() => { tokenPromise = null; });
+  }
+  return (await tokenPromise).token;
 }
 
 // 呼叫 TDX 並用 Cache API 快取結果，減少 API 次數（TDX 有呼叫額度限制）
