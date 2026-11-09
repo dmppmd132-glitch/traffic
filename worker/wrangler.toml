@@ -7,6 +7,12 @@ compatibility_date = "2026-11-01"
 # 允許呼叫 API 的前端網域（GitHub Pages）
 ALLOWED_ORIGIN = "https://dmppmd132-glitch.github.io"
 
+# 建立 Cloudflare D1 後，將 database_id 換成你的 D1 ID，再取消以下區塊註解：
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "tra-timetable"
+# database_id = "貼上你的 D1 database_id"
+
 # 金鑰請勿寫在這裡，改用指令設定：
 #   npx wrangler secret put TDX_ID
 #   npx wrangler secret put TDX_SECRET

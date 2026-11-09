@@ -101,6 +101,31 @@ async function tdxGet(env, ctx, path, ttl, query = '') {
   return res;
 }
 
+async function scheduleGet(env, ctx, city, route, name) {
+  const cacheKey = `${city}|${route}`;
+  if (env.DB) {
+    try {
+      const row = await env.DB.prepare(
+        'SELECT payload FROM bus_schedule_cache WHERE cache_key = ? AND updated_at > ?'
+      ).bind(cacheKey, Date.now() - 86400000).first();
+      if (row && row.payload) return json(JSON.parse(row.payload));
+    } catch { /* D1 尚未建立時，退回 TDX */ }
+  }
+  const upstream = await tdxGet(
+    env, ctx, `/v2/Bus/Schedule/City/${city}/${name}`, 86400,
+    '%24select=RouteName,SubRouteUID,SubRouteName,Direction,Timetables'
+  );
+  if (env.DB && upstream.ok) {
+    try {
+      const payload = await upstream.clone().json();
+      await env.DB.prepare(
+        'INSERT OR REPLACE INTO bus_schedule_cache (cache_key, city, route, payload, updated_at) VALUES (?, ?, ?, ?, ?)'
+      ).bind(cacheKey, city, route, JSON.stringify(payload), Date.now()).run();
+    } catch { /* D1 寫入失敗不影響即時回應 */ }
+  }
+  return upstream;
+}
+
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
@@ -181,10 +206,7 @@ async function route(env, ctx, url) {
 
       // 路線預定時刻：用於站站時刻表（快取一天）
       if (p === '/api/bus/schedule') {
-        return await tdxGet(
-          env, ctx, `/v2/Bus/Schedule/City/${city}/${name}`, 86400,
-          '%24select=RouteName,SubRouteUID,SubRouteName,Direction,Timetables'
-        );
+        return await scheduleGet(env, ctx, city, route, name);
       }
 
       // 即時到站時間：/api/bus/eta?city=Kaohsiung&route=紅9（資料很即時，只快取 15 秒）

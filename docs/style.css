@@ -172,9 +172,15 @@ button.link { border: 0; background: none; padding: 0 0 0 8px; color: var(--bran
 .map-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .map-head h2 { margin: 0; font-size: 17px; }
 .map-status { color: var(--sub); font-size: 12px; white-space: nowrap; }
-.bus-map { height: min(56vw, 360px); min-height: 260px; border-radius: 10px; overflow: hidden; background: #dfe8ef; }
+.bus-map { position: relative; height: min(56vw, 360px); min-height: 260px; border-radius: 10px; overflow: hidden; background: #20242b; }
 .map-note { color: var(--sub); font-size: 12px; margin: 8px 0 0; }
-.bus-marker { background: transparent; border: 0; text-align: center; font-size: 25px; line-height: 30px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
+.route-svg { width: 100%; height: 100%; display: block; background: radial-gradient(circle at 35% 40%, #2a3039, #171a20); }
+.route-line { fill: none; stroke: #4ea4e8; stroke-width: 12; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 2px 2px rgba(0,0,0,.35)); }
+.route-stops-layer { position: absolute; inset: 0; pointer-events: none; }
+.route-stop { position: absolute; transform: translate(-50%, -50%); width: 24px; height: 24px; padding: 0; border: 3px solid #55a8e8; border-radius: 50%; background: #20242b; color: #fff; font-size: 10px; line-height: 18px; pointer-events: auto; }
+.live-bus { position: absolute; z-index: 3; transform: translate(-50%, -50%); width: 38px; height: 38px; display: grid; place-items: center; border: 3px solid #63b9f2; border-radius: 50%; background: #17202b; box-shadow: 0 0 0 5px rgba(78,164,232,.18), 0 3px 8px rgba(0,0,0,.45); font-size: 22px; transition: left 18s ease-in-out, top 18s ease-in-out; animation: busPulse 1.8s ease-in-out infinite; }
+.live-bus span { filter: drop-shadow(0 1px 1px #000); }
+@keyframes busPulse { 0%, 100% { box-shadow: 0 0 0 5px rgba(78,164,232,.18), 0 3px 8px rgba(0,0,0,.45); } 50% { box-shadow: 0 0 0 10px rgba(78,164,232,.04), 0 3px 8px rgba(0,0,0,.45); } }
 .bus-timetable { overflow: hidden; border: 1px solid var(--line); border-radius: 10px; }
 .schedule-row { display: grid; grid-template-columns: 4.5em 1fr auto; gap: 8px; align-items: center; padding: 9px 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
 .schedule-row:last-child { border-bottom: 0; }

@@ -61,7 +61,7 @@
   let started = false;  // 公車分頁是否已初始化
   let openSeq = 0;      // 連續點選路線時，只採用最後一次的結果
   let busMap = null;
-  let mapLayers = [];
+  let mapSvg = null;
   let vehicleMarkers = new Map();
   const normQ = (s) => (s || '').trim().toLowerCase().replace(/\s+/g, '');
 
@@ -247,43 +247,70 @@
     $('busScheduleStatus').textContent = `${use.length || rows.length} 班`;
   }
 
-  function clearMap() {
-    mapLayers.forEach((layer) => layer.remove());
-    mapLayers = [];
-    vehicleMarkers.forEach((marker) => marker.remove());
-    vehicleMarkers.clear();
-  }
-
   function renderMap(entry, shapeData, vehicles) {
-    if (!window.L) return;
-    if (!busMap) {
-      busMap = L.map('busMap', { zoomControl: true }).setView([22.6273, 120.3014], 12);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors',
-      }).addTo(busMap);
-    }
-    clearMap();
+    const box = $('busMap');
     const points = entry.stops.filter((s) => s.lat && s.lon).map((s) => [s.lat, s.lon]);
     const lines = parseGeometry(shapeData, cur.route);
-    lines.forEach((line) => mapLayers.push(L.polyline(line, { color: '#0b3d91', weight: 5, opacity: .75 }).addTo(busMap)));
-    if (!lines.length && points.length > 1) mapLayers.push(L.polyline(points, { color: '#0b3d91', weight: 4, dashArray: '8 8' }).addTo(busMap));
-    points.forEach((point, i) => {
-      const s = entry.stops.filter((x) => x.lat && x.lon)[i];
-      const marker = L.circleMarker(point, { radius: 6, color: '#0b3d91', fillColor: '#fff', fillOpacity: 1, weight: 3 }).addTo(busMap);
-      marker.bindPopup(`<strong>${s.seq}. ${s.name}</strong><br>${etaInfo(lookupEta(cur.etaMap, entry, s.uid)).text}`);
-      mapLayers.push(marker);
+    const routePoints = lines.flat().concat(points);
+    if (!routePoints.length) return;
+    const lats = routePoints.map((p) => p[0]);
+    const lons = routePoints.map((p) => p[1]);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+    const project = (lat, lon) => ({
+      x: 40 + ((lon - minLon) / Math.max(.00001, maxLon - minLon)) * 920,
+      y: 560 - ((lat - minLat) / Math.max(.00001, maxLat - minLat)) * 520,
     });
+    if (!busMap) {
+      busMap = box;
+      busMap.replaceChildren();
+      mapSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      mapSvg.setAttribute('viewBox', '0 0 1000 600');
+      mapSvg.className = 'route-svg';
+      busMap.append(mapSvg);
+      const stopsLayer = document.createElement('div');
+      stopsLayer.className = 'route-stops-layer';
+      busMap.append(stopsLayer);
+      busMap._stopsLayer = stopsLayer;
+    }
+    mapSvg.replaceChildren();
+    const drawLine = (line, cls = 'route-line') => {
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      path.setAttribute('points', line.map(([lat, lon]) => { const p = project(lat, lon); return `${p.x},${p.y}`; }).join(' '));
+      path.setAttribute('class', cls);
+      mapSvg.append(path);
+    };
+    (lines.length ? lines : [points]).forEach((line) => drawLine(line));
+    busMap._stopsLayer.replaceChildren(...entry.stops.filter((s) => s.lat && s.lon).map((s) => {
+      const p = project(s.lat, s.lon);
+      const el = document.createElement('button');
+      el.className = 'route-stop';
+      el.style.left = `${p.x / 10}%`;
+      el.style.top = `${p.y / 6}%`;
+      el.title = `${s.seq}. ${s.name}`;
+      el.textContent = s.seq;
+      return el;
+    }));
+    const seen = new Set();
     parseVehicles(vehicles, cur.route).forEach((v, i) => {
-      const p = [Number(v.Position.PositionLat), Number(v.Position.PositionLon)];
-      const icon = L.divIcon({ className: 'bus-marker', html: '<span>🚌</span>', iconSize: [30, 30], iconAnchor: [15, 15] });
-      const marker = L.marker(p, { icon }).addTo(busMap);
-      marker.bindPopup(`<strong>公車 ${v.PlateNumb || i + 1}</strong><br>方向：${v.Direction === 0 ? '去程' : '返程'}`);
-      vehicleMarkers.set(v.PlateNumb || String(i), marker);
+      const id = v.PlateNumb || String(i);
+      const p = project(Number(v.Position.PositionLat), Number(v.Position.PositionLon));
+      let marker = vehicleMarkers.get(id);
+      if (!marker) {
+        marker = document.createElement('div');
+        marker.className = 'live-bus';
+        marker.innerHTML = '<span>🚌</span>';
+        marker.title = `公車 ${id}`;
+        busMap.append(marker);
+        vehicleMarkers.set(id, marker);
+      }
+      marker.style.left = `${p.x / 10}%`;
+      marker.style.top = `${p.y / 6}%`;
+      marker.hidden = false;
+      seen.add(id);
     });
-    if (points.length) busMap.fitBounds(points, { padding: [20, 20] });
-    $('busMapStatus').textContent = `${points.length} 個站牌、${vehicleMarkers.size} 輛公車`;
-    setTimeout(() => busMap.invalidateSize(), 50);
+    vehicleMarkers.forEach((marker, id) => { if (!seen.has(id)) marker.hidden = true; });
+    $('busMapStatus').textContent = `${points.length} 個站牌、${seen.size} 輛公車`;
   }
 
   async function loadMapAndSchedule(entry) {
