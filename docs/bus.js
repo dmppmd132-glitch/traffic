@@ -329,7 +329,7 @@
     return leafletReady;
   }
 
-  // 底圖：預設使用 Esri 灰階簡易街道圖（免金鑰，只有道路線條，沒有地名與雜色）
+  // 底圖：預設使用 Esri 灰階簡易街道圖（免金鑰，道路加淡色路名，沒有雜色）
   // 淺色 / 深色模式會依系統設定自動切換對應圖磚
   // 想換成其他圖磚，可在 config.js 設定 window.TRA_MAP_TILE_URL 與 window.TRA_MAP_ATTRIBUTION
   const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
@@ -345,10 +345,14 @@
     const dark = !!(darkMQ && darkMQ.matches);
     const name = dark ? 'World_Dark_Gray' : 'World_Light_Gray';
     const opt = { maxZoom: 19, maxNativeZoom: 16 };
-    tiles = L.tileLayer(`${ESRI}${name}_Base/MapServer/tile/{z}/{y}/{x}`, {
-      ...opt,
-      attribution: 'Tiles &copy; Esri, HERE, Garmin, OpenStreetMap contributors'
-    }).addTo(busMap);
+    tiles = L.layerGroup([
+      L.tileLayer(`${ESRI}${name}_Base/MapServer/tile/{z}/{y}/{x}`, {
+        ...opt,
+        attribution: 'Tiles &copy; Esri, HERE, Garmin, OpenStreetMap contributors'
+      }),
+      // 路名與地標文字（淡灰色，不搶眼）；不想要文字可刪掉這一個圖層
+      L.tileLayer(`${ESRI}${name}_Reference/MapServer/tile/{z}/{y}/{x}`, { ...opt, pane: 'shadowPane' })
+    ]).addTo(busMap);
   }
   if (darkMQ && darkMQ.addEventListener) darkMQ.addEventListener('change', () => setTiles());
 
@@ -403,7 +407,7 @@
       mapKey = key;
       routeLayer.clearLayers();
       const drawn = lines.length ? lines : [stops.map((x) => [x.lat, x.lon])];
-      for (const line of drawn) L.polyline(line, { color: '#2f80d0', weight: 5, opacity: 0.9 }).addTo(routeLayer);
+      for (const line of drawn) L.polyline(line, { color: '#3d86c6', weight: 7, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }).addTo(routeLayer);
 
       for (const st of stops) {
         L.circleMarker([st.lat, st.lon], { radius: 5, color: '#2f80d0', weight: 2, fillColor: '#ffffff', fillOpacity: 1 })

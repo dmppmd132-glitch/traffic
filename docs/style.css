@@ -200,9 +200,9 @@ button.link { border: 0; background: none; padding: 0 0 0 8px; color: var(--bran
 .bm-icon { background: none; border: 0; }
 .bm { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; }
 .bm .bi {
-  width: 34px; height: 34px; border-radius: 50%;
-  display: grid; place-items: center; font-size: 18px; line-height: 1;
-  background: #2f80d0; border: 3px solid #1b232c; color: #fff;
+  width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 20px; line-height: 1;
+  background: #3d86c6; border: 3px solid #1b232c; color: #fff;
   box-shadow: 0 1px 6px rgba(0,0,0,.5);
 }
 .bm.warn .bi { background: #d64a3a; }
