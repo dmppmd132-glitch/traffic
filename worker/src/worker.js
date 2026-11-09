@@ -148,9 +148,9 @@ async function route(env, ctx, url) {
         );
       }
 
-      // 路線名稱：中英數字與少數符號，最長 20 字
+      // 路線名稱：TDX 路線可能含空白、頓號、全形標點與括號；只拒絕控制字元
       const route = url.searchParams.get('route') || '';
-      if (!/^[一-鿿A-Za-z0-9\-()（）]{1,20}$/.test(route)) {
+      if (!route || route.length > 80 || /[\u0000-\u001F\u007F]/.test(route)) {
         return json({ error: '路線名稱格式錯誤' }, 400);
       }
       const name = encodeURIComponent(route);

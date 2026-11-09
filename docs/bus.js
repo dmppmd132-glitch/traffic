@@ -178,6 +178,12 @@
       const g = item.Geometry;
       if (!g) continue;
       let coords = g.coordinates || g.Coordinates || g;
+      if (typeof coords === 'string' && coords.startsWith('LINESTRING')) {
+        coords = coords.replace(/^LINESTRING\s*\(/i, '').replace(/\)\s*$/, '').split(',').map((p) => {
+          const [lon, lat] = p.trim().split(/\s+/).map(Number);
+          return [lon, lat];
+        });
+      }
       if (typeof coords === 'string') {
         try { coords = JSON.parse(coords); } catch { coords = null; }
       }
@@ -250,7 +256,13 @@
 
   function renderMap(entry, shapeData, vehicles) {
     if (!window.L) return;
-    if (!busMap) busMap = L.map('busMap', { zoomControl: true }).setView([22.6273, 120.3014], 12);
+    if (!busMap) {
+      busMap = L.map('busMap', { zoomControl: true }).setView([22.6273, 120.3014], 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors',
+      }).addTo(busMap);
+    }
     clearMap();
     const points = entry.stops.filter((s) => s.lat && s.lon).map((s) => [s.lat, s.lon]);
     const lines = parseGeometry(shapeData, cur.route);
