@@ -204,6 +204,14 @@ async function route(env, ctx, url) {
         );
       }
 
+      // 公車即時座標（RealTimeByFrequency）：地圖上的公車圖示與車號
+      if (p === '/api/bus/pos') {
+        return await tdxGet(
+          env, ctx, `/v2/Bus/RealTimeByFrequency/City/${city}/${name}`, 10,
+          '%24select=RouteName,SubRouteUID,Direction,PlateNumb,BusPosition,BusStatus,DutyStatus'
+        );
+      }
+
       // 路線預定時刻：用於站站時刻表（快取一天）
       if (p === '/api/bus/schedule') {
         return await scheduleGet(env, ctx, city, route, name);

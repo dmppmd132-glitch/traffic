@@ -60,9 +60,7 @@
   let cur = null;       // 目前開啟的路線 {route, entries, active, etaMap, updated}
   let started = false;  // 公車分頁是否已初始化
   let openSeq = 0;      // 連續點選路線時，只採用最後一次的結果
-  let busMap = null;
-  let mapSvg = null;
-  let vehicleMarkers = new Map();
+  let busMap = null;   // Leaflet 地圖物件（第一次顯示時才建立）
   const normQ = (s) => (s || '').trim().toLowerCase().replace(/\s+/g, '');
 
   function setMsg(text, info = false) {
@@ -171,38 +169,55 @@
     return entries;
   }
 
+  // 路線形狀：回傳多條線，每條 [[緯度, 經度], ...]，並記下方向
   function parseGeometry(data, routeName) {
-    const list = pickArray(data).filter((x) => !routeName || !x.RouteName || x.RouteName.Zh_tw === routeName);
     const lines = [];
-    for (const item of list) {
+    for (const item of pickArray(data)) {
+      const nm = item.RouteName && item.RouteName.Zh_tw;
+      if (routeName && nm && nm !== routeName) continue;
       const g = item.Geometry;
       if (!g) continue;
-      let coords = g.coordinates || g.Coordinates || g;
-      if (typeof coords === 'string' && coords.startsWith('LINESTRING')) {
-        coords = coords.replace(/^LINESTRING\s*\(/i, '').replace(/\)\s*$/, '').split(',').map((p) => {
-          const [lon, lat] = p.trim().split(/\s+/).map(Number);
-          return [lon, lat];
-        });
+      let line = [];
+      if (typeof g === 'string') {
+        // WKT：LINESTRING(經度 緯度, ...)，MULTILINESTRING 也能處理
+        const re = /(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g;
+        let m;
+        while ((m = re.exec(g))) line.push([parseFloat(m[2]), parseFloat(m[1])]);
+      } else {
+        const coords = g.coordinates || g.Coordinates; // GeoJSON：[經度, 緯度]
+        if (Array.isArray(coords)) {
+          line = coords
+            .map((p) => (Array.isArray(p) ? [Number(p[1]), Number(p[0])] : [Number(p.PositionLat || p.Lat), Number(p.PositionLon || p.Lon)]))
+            .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+        }
       }
-      if (typeof coords === 'string') {
-        try { coords = JSON.parse(coords); } catch { coords = null; }
+      if (line.length > 1) {
+        line.dir = item.Direction;
+        line.sub = item.SubRouteUID || '';
+        lines.push(line);
       }
-      if (!Array.isArray(coords)) continue;
-      const line = coords.map((p) => {
-        if (Array.isArray(p)) return [Number(p[1]), Number(p[0])];
-        return [Number(p.PositionLat || p.Lat), Number(p.PositionLon || p.Lon)];
-      }).filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
-      if (line.length > 1) lines.push(line);
     }
     return lines;
   }
 
-  function parseVehicles(data, routeName) {
-    return pickArray(data).filter((v) => {
-      const name = v.RouteName && v.RouteName.Zh_tw;
-      return (!routeName || !name || name === routeName) && v.Position &&
-        Number.isFinite(Number(v.Position.PositionLat)) && Number.isFinite(Number(v.Position.PositionLon));
-    });
+  // 公車即時座標：只留本方向、營運中、有座標的車
+  const BUS_STATUS = { 1: '車禍', 2: '故障', 3: '塞車', 4: '緊急求援', 5: '加油', 100: '客滿' };
+  const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+
+  function parsePositions(data, entry) {
+    return pickArray(data)
+      .map((b) => ({
+        plate: b.PlateNumb || '',
+        dir: b.Direction,
+        sub: b.SubRouteUID || '',
+        lat: b.BusPosition && b.BusPosition.PositionLat,
+        lon: b.BusPosition && b.BusPosition.PositionLon,
+        status: b.BusStatus,
+        duty: b.DutyStatus,
+      }))
+      .filter((b) => isNum(b.lat) && isNum(b.lon))
+      .filter((b) => b.dir === entry.dir && (!entry.sub || !b.sub || b.sub === entry.sub))
+      .filter((b) => b.status !== 99 && b.duty !== 2); // 非營運 / 已收班
   }
 
   function parseSchedule(data) {
@@ -262,90 +277,184 @@
     $('busScheduleStatus').textContent = `${rowsByStop.length} 站／${selected.length} 班`;
   }
 
-  function renderMap(entry, shapeData, vehicles) {
+  // ---------- 地圖（Leaflet 街道地圖，第一次顯示時才載入）----------
+  const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+  const LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  let leafletReady = null;
+  let tiles = null;
+  let routeLayer = null;
+  let busLayer = null;
+  let meLayer = null;
+  let mapKey = '';
+
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve();
+    if (leafletReady) return leafletReady;
+    leafletReady = new Promise((resolve, reject) => {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = LEAFLET_CSS;
+      document.head.append(css);
+      const sc = document.createElement('script');
+      sc.src = LEAFLET_JS;
+      sc.onload = () => resolve();
+      sc.onerror = () => { leafletReady = null; reject(new Error('地圖元件載入失敗，請檢查網路')); };
+      document.head.append(sc);
+    });
+    return leafletReady;
+  }
+
+  // 依系統深色 / 淺色模式選底圖（CARTO，資料來自 OpenStreetMap）
+  function setTiles() {
+    if (!busMap) return;
+    const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (tiles) busMap.removeLayer(tiles);
+    tiles = L.tileLayer(
+      `https://{s}.basemaps.cartocdn.com/${dark ? 'dark_all' : 'light_all'}/{z}/{x}/{y}{r}.png`,
+      {
+        subdomains: 'abcd',
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      }
+    ).addTo(busMap);
+  }
+
+  function ensureMap() {
+    if (busMap) return;
     const box = $('busMap');
-    const points = entry.stops.filter((s) => s.lat && s.lon).map((s) => [s.lat, s.lon]);
-    const lines = parseGeometry(shapeData, cur.route);
-    const routePoints = lines.flat().concat(points);
-    if (!routePoints.length) {
-      box.textContent = '目前沒有可繪製的站牌座標';
+    box.replaceChildren(); // 清掉「載入中」之類的文字
+    busMap = L.map(box, { zoomControl: true }).setView([22.63, 120.3], 12); // 預設高雄市區
+    setTiles();
+    routeLayer = L.layerGroup().addTo(busMap);
+    busLayer = L.layerGroup().addTo(busMap);
+    meLayer = L.layerGroup().addTo(busMap);
+    if (window.matchMedia) {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      if (mq.addEventListener) mq.addEventListener('change', setTiles);
+    }
+  }
+
+  const divIcon = (html, cls) => L.divIcon({ className: cls, html, iconSize: [0, 0], iconAnchor: [0, 0] });
+
+  // 畫公車：圓形圖示 + 車號；回傳車輛數
+  function drawBuses(entry, posData) {
+    busLayer.clearLayers();
+    const list = parsePositions(posData, entry);
+    for (const b of list) {
+      const bad = BUS_STATUS[b.status] && b.status !== 100;
+      const html = `<div class="bm${bad ? ' warn' : ''}"><div class="bi">🚌</div><div class="bp"></div></div>`;
+      const m = L.marker([b.lat, b.lon], { icon: divIcon(html, 'bm-icon'), zIndexOffset: 1000, keyboard: false }).addTo(busLayer);
+      // 車號用 textContent 寫入，避免特殊字元造成問題
+      const el = m.getElement && m.getElement();
+      const bp = el && el.querySelector('.bp');
+      if (bp) bp.textContent = b.plate || '公車';
+    }
+    return list.length;
+  }
+
+  function renderMap(entry, shapeData, posData) {
+    const stops = entry.stops.filter((x) => isNum(x.lat) && isNum(x.lon));
+    const all = parseGeometry(shapeData, cur.route);
+    const mine = all.filter((l) => l.dir === entry.dir && (!entry.sub || !l.sub || l.sub === entry.sub));
+    const sameDir = all.filter((l) => l.dir === entry.dir);
+    const lines = mine.length ? mine : sameDir.length ? sameDir : all;
+
+    if (!lines.length && !stops.length) {
       $('busMapStatus').textContent = '無座標資料';
       return;
     }
-    const lats = routePoints.map((p) => p[0]);
-    const lons = routePoints.map((p) => p[1]);
-    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-    const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-    const project = (lat, lon) => ({
-      x: 40 + ((lon - minLon) / Math.max(.00001, maxLon - minLon)) * 920,
-      y: 560 - ((lat - minLat) / Math.max(.00001, maxLat - minLat)) * 520,
-    });
-    if (!busMap) {
-      busMap = box;
-      busMap.replaceChildren();
-      mapSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      mapSvg.setAttribute('viewBox', '0 0 1000 600');
-      mapSvg.className = 'route-svg';
-      busMap.append(mapSvg);
-      const stopsLayer = document.createElement('div');
-      stopsLayer.className = 'route-stops-layer';
-      busMap.append(stopsLayer);
-      busMap._stopsLayer = stopsLayer;
-    }
-    mapSvg.replaceChildren();
-    const drawLine = (line, cls = 'route-line') => {
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-      path.setAttribute('points', line.map(([lat, lon]) => { const p = project(lat, lon); return `${p.x},${p.y}`; }).join(' '));
-      path.setAttribute('class', cls);
-      mapSvg.append(path);
-    };
-    (lines.length ? lines : [points]).forEach((line) => drawLine(line));
-    busMap._stopsLayer.replaceChildren(...entry.stops.filter((s) => s.lat && s.lon).map((s) => {
-      const p = project(s.lat, s.lon);
-      const el = document.createElement('button');
-      el.className = 'route-stop';
-      el.style.left = `${p.x / 10}%`;
-      el.style.top = `${p.y / 6}%`;
-      el.title = `${s.seq}. ${s.name}`;
-      el.textContent = s.seq;
-      return el;
-    }));
-    const seen = new Set();
-    parseVehicles(vehicles, cur.route).forEach((v, i) => {
-      const id = v.PlateNumb || String(i);
-      const p = project(Number(v.Position.PositionLat), Number(v.Position.PositionLon));
-      let marker = vehicleMarkers.get(id);
-      if (!marker) {
-        marker = document.createElement('div');
-        marker.className = 'live-bus';
-        marker.innerHTML = '<span>🚌</span>';
-        marker.title = `公車 ${id}`;
-        busMap.append(marker);
-        vehicleMarkers.set(id, marker);
+
+    ensureMap();
+    busMap.invalidateSize();
+    setTimeout(() => busMap && busMap.invalidateSize(), 150); // 容器剛顯示時，等排版完成再校正一次
+
+    // 路線與站牌：只在路線或方向改變時重畫並縮放
+    const key = `${cur.route}|${entry.dir}|${entry.sub}`;
+    if (key !== mapKey) {
+      mapKey = key;
+      routeLayer.clearLayers();
+      const drawn = lines.length ? lines : [stops.map((x) => [x.lat, x.lon])];
+      for (const line of drawn) L.polyline(line, { color: '#2f80d0', weight: 5, opacity: 0.9 }).addTo(routeLayer);
+
+      for (const st of stops) {
+        L.circleMarker([st.lat, st.lon], { radius: 5, color: '#2f80d0', weight: 2, fillColor: '#ffffff', fillOpacity: 1 })
+          .addTo(routeLayer)
+          .bindPopup(() => {
+            const box = document.createElement('div');
+            box.className = 'stoppop';
+            const b = document.createElement('b');
+            b.textContent = `${st.seq}. ${st.name}`;
+            const sp = document.createElement('span');
+            const info = cur && cur.etaMap ? etaInfo(lookupEta(cur.etaMap, entry, st.uid)) : null;
+            sp.textContent = info ? info.text : '—';
+            box.append(b, sp);
+            return box;
+          });
       }
-      marker.style.left = `${p.x / 10}%`;
-      marker.style.top = `${p.y / 6}%`;
-      marker.hidden = false;
-      seen.add(id);
-    });
-    vehicleMarkers.forEach((marker, id) => { if (!seen.has(id)) marker.hidden = true; });
-    $('busMapStatus').textContent = `${points.length} 個站牌、${seen.size} 輛公車`;
+      if (stops.length > 1) {
+        const a = stops[0];
+        const z = stops[stops.length - 1];
+        L.marker([a.lat, a.lon], { icon: divIcon('<div class="endmark start">起</div>', 'bm-icon'), keyboard: false }).addTo(routeLayer);
+        L.marker([z.lat, z.lon], { icon: divIcon('<div class="endmark">終</div>', 'bm-icon'), keyboard: false }).addTo(routeLayer);
+      }
+      const pts = drawn.flat();
+      if (pts.length) busMap.fitBounds(pts, { padding: [30, 30] });
+    }
+
+    const n = drawBuses(entry, posData);
+    $('busMapStatus').textContent = posData ? (n ? `${n} 輛公車行駛中` : '目前沒有行駛中的公車') : '公車位置暫時無法取得';
   }
 
+  // 只更新公車位置（不重畫路線），每次自動更新時呼叫
+  async function refreshVehicles() {
+    if (!cur || !busMap) return;
+    const entry = cur.entries[cur.active];
+    const route = cur.route;
+    const pos = await api(apiQ('pos', route)).catch(() => null);
+    if (!pos || !cur || cur.route !== route || cur.entries[cur.active] !== entry) return;
+    drawBuses(entry, pos);
+    const n = parsePositions(pos, entry).length;
+    $('busMapStatus').textContent = n ? `${n} 輛公車行駛中` : '目前沒有行駛中的公車';
+  }
+
+  // 定位：在地圖上標出你的位置
+  function locateMe() {
+    if (!busMap) return;
+    if (!navigator.geolocation) { alert('這個瀏覽器不支援定位'); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const ll = [pos.coords.latitude, pos.coords.longitude];
+        meLayer.clearLayers();
+        L.circle(ll, { radius: pos.coords.accuracy, color: '#4c8dff', weight: 1, fillOpacity: 0.12 }).addTo(meLayer);
+        L.circleMarker(ll, { radius: 8, color: '#fff', weight: 3, fillColor: '#4c8dff', fillOpacity: 1 }).addTo(meLayer);
+        busMap.setView(ll, Math.max(busMap.getZoom(), 16));
+      },
+      () => alert('無法取得位置，請確認已允許定位權限'),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }
+
+  // 載入地圖與時刻表：路線形狀與班表每條路線只抓一次，之後只更新公車位置
   async function loadMapAndSchedule(entry) {
     $('busMapStatus').textContent = '載入地圖中…';
     $('busScheduleStatus').textContent = '載入中…';
-    const [shape, vehicles, schedule] = await Promise.all([
-      api(apiQ('shape', cur.route)).catch(() => []),
-      api(apiQ('vehicle', cur.route)).catch(() => []),
-      api(apiQ('schedule', cur.route)).catch(() => []),
+    const route = cur.route;
+    const [shape, pos, schedule] = await Promise.all([
+      cur.shapeData || api(apiQ('shape', route)).catch(() => []),
+      api(apiQ('pos', route)).catch(() => null),
+      cur.scheduleData || api(apiQ('schedule', route)).catch(() => []),
+      loadLeaflet().catch((err) => { cur && (cur.mapErr = err.message); }),
     ]);
-    if (!cur || cur.entries[cur.active] !== entry) return;
+    if (!cur || cur.route !== route || cur.entries[cur.active] !== entry) return;
+    if (pickArray(shape).length) cur.shapeData = shape;       // 有資料才快取，失敗時下次會重試
+    if (pickArray(schedule).length) cur.scheduleData = schedule;
+
     try {
-      renderMap(entry, shape, vehicles);
+      if (!window.L) throw new Error(cur.mapErr || '地圖元件尚未載入');
+      renderMap(entry, shape, pos);
     } catch (err) {
-      $('busMap').textContent = '路線圖暫時無法繪製，站牌清單仍可使用。';
-      $('busMapStatus').textContent = '地圖載入失敗';
+      // 不能動 #busMap 的內容（Leaflet 在裡面），只更新狀態文字
+      $('busMapStatus').textContent = '地圖載入失敗：' + err.message;
       console.error('bus map render failed', err);
     }
     try {
@@ -643,13 +752,13 @@
   // 只更新到站時間，不重新載入站序
   async function refreshEta() {
     if (!cur) return;
+    refreshVehicles(); // 公車位置獨立更新
     const route = cur.route;
     const map = await fetchEta(route);
     if (!cur || cur.route !== route || !map) return;
     cur.etaMap = map;
     cur.updated = new Date();
     renderStopList();
-    if (busMap) loadMapAndSchedule(cur.entries[cur.active]);
   }
 
   // ---------- 分頁切換 ----------
@@ -716,6 +825,8 @@
     store.set(KEY.hist, []);
     renderQuick();
   });
+
+  $('busLocate').addEventListener('click', locateMe);
 
   // 定時更新到站時間（只在公車分頁可見時）
   setInterval(() => {

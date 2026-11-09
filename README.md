@@ -46,3 +46,9 @@ TDX_SECRET=xxx
 `tra.lastRoute` 上次路線、`tra.favorites` 常用路線（最多 8）、`tra.history` 最近查詢（最多 8）、`tra.stations` 車站清單快取（7 天）。
 公車：`tra.bus.favRoutes` 常用路線、`tra.bus.favStops` 常用站牌、`tra.bus.history` 最近查詢、`tra.bus.last` 上次路線、`tra.bus.routes` 路線清單快取（7 天）。
 換瀏覽器或清除網站資料後會消失。
+
+## 公車地圖
+
+- 地圖使用 Leaflet（從 unpkg CDN 於第一次顯示時載入），底圖為 CARTO（資料來自 OpenStreetMap），依系統深色 / 淺色模式自動切換。這些底圖服務適合小量使用，流量變大時請改用自己的圖資供應商。
+- Worker 的 `/api/bus/pos`（TDX `RealTimeByFrequency`）提供公車座標與車號；`/api/bus/shape` 提供路線形狀。
+- 路線形狀與班表每條路線只抓一次，自動更新（每 20 秒）只更新公車位置。

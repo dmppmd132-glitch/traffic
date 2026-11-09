@@ -1,6 +1,6 @@
 // Service Worker：App 外殼快取 + API 網路優先
 // 每次改了前端檔案，記得把 VERSION 加一，舊快取才會被清掉
-const VERSION = 'v6';
+const VERSION = 'v7';
 const SHELL = `tra-shell-${VERSION}`;
 const DATA = `tra-data-${VERSION}`;
 
@@ -46,7 +46,8 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== location.origin && !isApi) return;
 
   // 即時資料（台鐵誤點、公車到站）：不快取，直接走網路
-  if (url.pathname === '/api/delay' || url.pathname === '/api/bus/eta') return;
+  const live = ['/api/delay', '/api/bus/eta', '/api/bus/pos'];
+  if (live.includes(url.pathname)) return;
 
   // 車站、時刻表：網路優先，失敗時退回上次的快取（離線也能看查過的路線）
   if (isApi) {
@@ -67,7 +68,7 @@ self.addEventListener('fetch', (e) => {
   // 靜態檔案（HTML / CSS / JS）：網路優先，確保各檔案版本一致；離線時才用快取
   // cache: 'no-cache' 會向伺服器確認是否有新版（沒變就回 304，很快），不會吃到瀏覽器的舊快取
   e.respondWith(
-    fetch(req, { cache: 'no-cache' })
+    fetch(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' }))
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();
