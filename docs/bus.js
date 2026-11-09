@@ -267,7 +267,11 @@
     const points = entry.stops.filter((s) => s.lat && s.lon).map((s) => [s.lat, s.lon]);
     const lines = parseGeometry(shapeData, cur.route);
     const routePoints = lines.flat().concat(points);
-    if (!routePoints.length) return;
+    if (!routePoints.length) {
+      box.textContent = '目前沒有可繪製的站牌座標';
+      $('busMapStatus').textContent = '無座標資料';
+      return;
+    }
     const lats = routePoints.map((p) => p[0]);
     const lons = routePoints.map((p) => p[1]);
     const minLat = Math.min(...lats), maxLat = Math.max(...lats);
@@ -337,8 +341,20 @@
       api(apiQ('schedule', cur.route)).catch(() => []),
     ]);
     if (!cur || cur.entries[cur.active] !== entry) return;
-    renderMap(entry, shape, vehicles);
-    renderTimetable(parseSchedule(schedule));
+    try {
+      renderMap(entry, shape, vehicles);
+    } catch (err) {
+      $('busMap').textContent = '路線圖暫時無法繪製，站牌清單仍可使用。';
+      $('busMapStatus').textContent = '地圖載入失敗';
+      console.error('bus map render failed', err);
+    }
+    try {
+      renderTimetable(parseSchedule(schedule));
+    } catch (err) {
+      $('busTimetable').innerHTML = '<p class="empty">時刻表資料格式暫時無法讀取，請稍後再試。</p>';
+      $('busScheduleStatus').textContent = '讀取失敗';
+      console.error('bus timetable render failed', err);
+    }
   }
 
   // ---------- 到站時間 ----------
