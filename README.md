@@ -49,6 +49,6 @@ TDX_SECRET=xxx
 
 ## 公車地圖
 
-- 地圖使用 Leaflet（從 unpkg CDN 於第一次顯示時載入），底圖為 CARTO（資料來自 OpenStreetMap），依系統深色 / 淺色模式自動切換。這些底圖服務適合小量使用，流量變大時請改用自己的圖資供應商。
+- 地圖使用 Leaflet（從 unpkg CDN 於第一次顯示時載入），底圖為 OpenStreetMap 官方圖磚（免金鑰），深色模式用 CSS 濾鏡反相。OSM 圖磚適合小量使用；流量變大請改用自己的圖資供應商，並在 `docs/config.js` 設定 `window.TRA_MAP_TILE_URL` 與 `window.TRA_MAP_ATTRIBUTION`。
 - Worker 的 `/api/bus/pos`（TDX `RealTimeByFrequency`）提供公車座標與車號；`/api/bus/shape` 提供路線形狀。
 - 路線形狀與班表每條路線只抓一次，自動更新（每 20 秒）只更新公車位置。

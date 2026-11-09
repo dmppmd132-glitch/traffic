@@ -224,3 +224,8 @@ button.link { border: 0; background: none; padding: 0 0 0 8px; color: var(--bran
 .leaflet-container { font: inherit; }
 .stoppop b { display: block; font-size: 14px; }
 .stoppop span { font-size: 13px; }
+
+/* 深色模式：把地圖底圖反相成深色（只影響圖磚，不影響路線與公車標記）*/
+@media (prefers-color-scheme: dark) {
+  .bus-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.7); }
+}

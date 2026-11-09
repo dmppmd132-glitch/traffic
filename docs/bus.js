@@ -304,19 +304,16 @@
     return leafletReady;
   }
 
-  // 依系統深色 / 淺色模式選底圖（CARTO，資料來自 OpenStreetMap）
+  // 底圖：預設使用 OpenStreetMap 官方圖磚（免金鑰，適合小量使用）
+  // 想換成其他圖磚（例如國土測繪中心），可在 config.js 設定 window.TRA_MAP_TILE_URL 與 window.TRA_MAP_ATTRIBUTION
+  // 深色模式不換圖磚，而是用 CSS 濾鏡把底圖反相成深色（見 style.css）
   function setTiles() {
     if (!busMap) return;
-    const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     if (tiles) busMap.removeLayer(tiles);
-    tiles = L.tileLayer(
-      `https://{s}.basemaps.cartocdn.com/${dark ? 'dark_all' : 'light_all'}/{z}/{x}/{y}{r}.png`,
-      {
-        subdomains: 'abcd',
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      }
-    ).addTo(busMap);
+    const url = window.TRA_MAP_TILE_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    const attribution = window.TRA_MAP_ATTRIBUTION ||
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> 貢獻者';
+    tiles = L.tileLayer(url, { maxZoom: 19, attribution }).addTo(busMap);
   }
 
   function ensureMap() {
@@ -328,10 +325,6 @@
     routeLayer = L.layerGroup().addTo(busMap);
     busLayer = L.layerGroup().addTo(busMap);
     meLayer = L.layerGroup().addTo(busMap);
-    if (window.matchMedia) {
-      const mq = window.matchMedia('(prefers-color-scheme: dark)');
-      if (mq.addEventListener) mq.addEventListener('change', setTiles);
-    }
   }
 
   const divIcon = (html, cls) => L.divIcon({ className: cls, html, iconSize: [0, 0], iconAnchor: [0, 0] });
