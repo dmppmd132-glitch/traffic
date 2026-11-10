@@ -324,14 +324,45 @@
   const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(t); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
   const fmtMin = (n) => `${String(Math.floor(n / 60) % 24).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
 
+  // 站名比對用：去掉空白與括號符號，「台」「臺」視為相同
+  const normName = (v) => String(v || '').replace(/[()（）\s]/g, '').replace(/台/g, '臺');
+
+  // 挑出要顯示的班次群組：
+  // 群組若有 "to"（終點站名稱），就用目前方向的終點站去比對，不依賴 0 / 1 的編號（避免方向編號搞反）；
+  // 沒有 "to" 或比對不到時，才用 directions 的 0 / 1 編號
+  function pickLocalGroups(info, entry) {
+    const dirs = info.directions || {};
+    const all = Object.values(dirs).flat();
+    const lastStop = entry.stops && entry.stops.length ? normName(entry.stops[entry.stops.length - 1].name) : '';
+    if (lastStop && all.some((g) => g.to)) {
+      const hit = all.filter((g) => {
+        const to = normName(g.to);
+        return to && (to.includes(lastStop) || lastStop.includes(to));
+      });
+      if (hit.length) return hit;
+    }
+    return dirs[String(entry.dir)] || dirs[entry.dir] || [];
+  }
+
+  // 班次群組是否適用今天：標題含「例假日」= 週六日、「平常日」= 週一到週五；其他標題一律視為適用
+  // （國定假日與補班日無法判斷，請以公車處公告為準）
+  function localGroupIsToday(g) {
+    const weekend = [0, 6].includes(new Date().getDay());
+    const d = String(g.days || '');
+    if (/例假日|假日/.test(d)) return weekend;
+    if (/平常日|平日/.test(d)) return !weekend;
+    return true;
+  }
+
   function renderLocalSchedule(info, entry) {
     const box = $('busTimetable');
-    const groups = (info.directions && (info.directions[String(entry.dir)] || info.directions[entry.dir])) || [];
-    if (!groups.length) return false;
+    const picked = pickLocalGroups(info, entry);
+    if (!picked.length) return false;
+    const groups = [...picked].sort((a, b) => Number(localGroupIsToday(b)) - Number(localGroupIsToday(a))); // 今天適用的排前面（穩定排序）
     const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
-    const chips = (list) => list.map((t) => {
+    const chips = (list, today = true) => list.map((t) => {
       const m = toMin(t);
-      return `<span class="t${m !== null && m < nowMin ? ' past' : ''}">${t}</span>`;
+      return `<span class="t${today && m !== null && m < nowMin ? ' past' : ''}">${t}</span>`;
     }).join('');
     const rows = [];
     if (info.from) {
@@ -341,9 +372,11 @@
       rows.push(head);
     }
     for (const g of groups) {
+      const today = localGroupIsToday(g);
+      const isDayTyped = /例假日|假日|平常日|平日/.test(String(g.days || ''));
       const title = document.createElement('div');
       title.className = 'schedule-row stop-schedule local-title';
-      title.innerHTML = `<span class="stop-seq"></span><span class="schedule-stop-name">${g.days || '班次'}${g.note ? '　<small>' + g.note + '</small>' : ''}</span>`;
+      title.innerHTML = `<span class="stop-seq"></span><span class="schedule-stop-name">${g.days || '班次'}${isDayTyped && today ? '（今天）' : ''}${g.note ? '　<small>' + g.note + '</small>' : ''}</span>`;
       rows.push(title);
       const stops = g.stops || [];
       if (stops.length) {
@@ -356,13 +389,13 @@
           }
           const row = document.createElement('div');
           row.className = 'schedule-row stop-schedule';
-          row.innerHTML = `<span class="stop-seq">${i + 1}</span><span class="schedule-stop-name">${st.name || `第 ${i + 1} 站`}</span><span class="schedule-times">${chips(list)}</span>`;
+          row.innerHTML = `<span class="stop-seq">${i + 1}</span><span class="schedule-stop-name">${st.name || `第 ${i + 1} 站`}</span><span class="schedule-times">${chips(list, today)}</span>`;
           rows.push(row);
         });
       } else {
         const row = document.createElement('div');
         row.className = 'schedule-row stop-schedule';
-        row.innerHTML = `<span class="stop-seq"></span><span class="schedule-stop-name">${info.from ? info.from + ' 發車' : '發車時間'}</span><span class="schedule-times">${chips(g.times || [])}</span>`;
+        row.innerHTML = `<span class="stop-seq"></span><span class="schedule-stop-name">${info.from ? info.from + ' 發車' : '發車時間'}</span><span class="schedule-times">${chips(g.times || [], today)}</span>`;
         rows.push(row);
       }
     }
