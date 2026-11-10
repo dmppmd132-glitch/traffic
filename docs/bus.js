@@ -44,7 +44,7 @@
       if (!res.ok) throw new Error('伺服器回應 ' + res.status);
       return await res.json();
     } catch (err) {
-      if (err && err.name === 'AbortError') throw new Error('連線逾時');
+      if (err && err.name === 'AbortError') throw new Error('連線逾時：' + path.split('?')[0].replace('/api/', ''));
       throw err;
     } finally {
       clearTimeout(timer);
@@ -644,7 +644,7 @@
 
     const scheduleTask = (async () => {
       try {
-        const schedule = cur.scheduleData || (await api(apiQ('schedule', route)));
+        const schedule = cur.scheduleData || (await api(apiQ('schedule', route), 60000));
         if (stale()) return;
         if (pickArray(schedule).length) cur.scheduleData = schedule;
         const parsed = parseSchedule(schedule);

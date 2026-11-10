@@ -110,20 +110,29 @@ async function scheduleGet(env, ctx, city, route, name) {
       const row = await env.DB.prepare(
         'SELECT payload FROM bus_schedule_cache WHERE cache_key = ? AND updated_at > ?'
       ).bind(cacheKey, Date.now() - 86400000).first();
-      if (row && row.payload) return json(JSON.parse(row.payload));
+      // 直接回傳存好的文字，不再解析後重新轉換，省下 CPU 時間
+      if (row && row.payload) {
+        return new Response(row.payload, {
+          headers: { 'content-type': 'application/json; charset=utf-8' },
+        });
+      }
     } catch { /* D1 尚未建立時，退回 TDX */ }
   }
   const upstream = await tdxGet(
     env, ctx, `/v2/Bus/Schedule/City/${city}/${name}`, 86400,
     '%24select=RouteName,SubRouteUID,SubRouteName,Direction,Timetables'
   );
+  // 先把結果回給使用者；寫入 D1 放到背景進行，不讓使用者等待
   if (env.DB && upstream.ok) {
-    try {
-      const payload = await upstream.clone().json();
-      await env.DB.prepare(
-        'INSERT OR REPLACE INTO bus_schedule_cache (cache_key, city, route, payload, updated_at) VALUES (?, ?, ?, ?, ?)'
-      ).bind(cacheKey, city, route, JSON.stringify(payload), Date.now()).run();
-    } catch { /* D1 寫入失敗不影響即時回應 */ }
+    const copy = upstream.clone();
+    ctx.waitUntil((async () => {
+      try {
+        const payload = await copy.text();
+        await env.DB.prepare(
+          'INSERT OR REPLACE INTO bus_schedule_cache (cache_key, city, route, payload, updated_at) VALUES (?, ?, ?, ?, ?)'
+        ).bind(cacheKey, city, route, payload, Date.now()).run();
+      } catch { /* D1 寫入失敗不影響回應 */ }
+    })());
   }
   return upstream;
 }

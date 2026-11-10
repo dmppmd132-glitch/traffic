@@ -1,6 +1,6 @@
-# 台鐵公車時刻 PWA
+# 台鐵公車捷運時刻 PWA
 
-台鐵起迄站查詢，以及高雄公車即時到站（路線搜尋、方向、站序、常用路線與常用站牌）。會記住上次查詢的路線。資料來源：交通部 TDX。
+台鐵起迄站查詢、高雄公車（即時到站、地圖、站站時刻表）、高雄捷運與輕軌（車站即時到站看板）。會記住上次查詢的路線與常用項目。資料來源：交通部 TDX。
 
 - `docs/`：前端 PWA，透過 GitHub Pages 發佈（https://dmppmd132-glitch.github.io/traffic/）
 - `worker/`：Cloudflare Worker，保管 TDX 金鑰、換 token、快取，並提供 `/api/*`
@@ -38,7 +38,8 @@ TDX_SECRET=xxx
 ## 公車功能
 
 - 預設縣市為高雄（`Kaohsiung`）。要改縣市，在 `docs/config.js` 加上 `window.TRA_BUS_CITY = 'Taipei';`（TDX 的縣市英文名）。
-- Worker 提供 `/api/bus/routes`、`/api/bus/stops`、`/api/bus/eta`（參數 `city`、`route`）。
+- Worker 提供 `/api/bus/routes`、`stops`、`eta`、`pos`（即時座標）、`shape`（路線形狀）、`vehicle`、`schedule`（班表），參數為 `city`、`route`。
+- 站站時刻表：優先使用 TDX 班表；TDX 沒有該路線班表時，改用 `docs/schedule-local.json`（手動維護，目前收錄 60、60區間，資料來自高雄市公車處）。新增路線時，依既有格式加入即可。
 - 到站時間每 20 秒自動更新（僅在公車分頁可見時）。
 
 ## 記憶功能（localStorage）
@@ -52,3 +53,21 @@ TDX_SECRET=xxx
 - 地圖使用 Leaflet（從 unpkg CDN 於第一次顯示時載入），底圖為 OpenStreetMap 官方圖磚（免金鑰），深色模式用 CSS 濾鏡反相。OSM 圖磚適合小量使用；流量變大請改用自己的圖資供應商，並在 `docs/config.js` 設定 `window.TRA_MAP_TILE_URL` 與 `window.TRA_MAP_ATTRIBUTION`。
 - Worker 的 `/api/bus/pos`（TDX `RealTimeByFrequency`）提供公車座標與車號；`/api/bus/shape` 提供路線形狀。
 - 路線形狀與班表每條路線只抓一次，自動更新（每 20 秒）只更新公車位置。
+
+## 捷運與輕軌
+
+- 高雄捷運（`KRTC`）與高雄輕軌（`KLRT`），前端為 `docs/metro.js`。
+- Worker 提供 `/api/metro/stations`（路線與車站，快取 1 天）與 `/api/metro/live`（即時到站看板，快取 15 秒），參數為 `op`。
+- 即時資料不會被 Service Worker 快取。
+
+## 班表快取（D1，選用）
+
+公車班表資料量大，第一次查詢可能較慢。啟用 Cloudflare D1 後，Worker 會把班表存起來，24 小時內直接回傳：
+
+1. 建立資料庫並匯入結構：`wrangler d1 create tra-timetable`，再執行 `wrangler d1 execute tra-timetable --remote --file=worker/schema.sql`。
+2. 在 `worker/wrangler.toml` 取消 `[[d1_databases]]` 區塊的註解並填入 `database_id`。若你是在 Cloudflare 網頁上綁定，請同步寫進這個檔案，否則下次用 `wrangler deploy` 會覆蓋掉網頁上的綁定。
+3. 沒有綁定時，Worker 會自動退回直接向 TDX 取得，功能不受影響。
+
+## 部署後的檢查
+
+修改 `worker/src/worker.js` 後，必須重新部署 Worker（`wrangler deploy`，或在 Cloudflare 網頁貼上並 Deploy），前端新功能才有對應的 API。
