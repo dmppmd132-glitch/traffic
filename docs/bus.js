@@ -316,7 +316,14 @@
     }
     let best = null;
     for (const k of keys) {
-      if (route.startsWith(k) && !/[0-9A-Za-z]/.test(route.charAt(k.length)) && (!best || k.length > best.length)) best = k;
+      if (!route.startsWith(k)) continue;
+      const rest = route.slice(k.length);
+      // 數字基礎路線可套用 A/B/D 等支線（例如本地「70」對應 TDX「70A」）；
+      // 但不能把「60」誤套到「600」或「60A」以外的其他數字路線。
+      const numericBase = /^\d+$/.test(k);
+      const isLetterVariant = numericBase && /^[A-Za-z](?:[^0-9]*)/.test(rest);
+      const isExactBase = !rest;
+      if ((isExactBase || isLetterVariant || !/[0-9A-Za-z]/.test(rest.charAt(0))) && (!best || k.length > best.length)) best = k;
     }
     return best ? local[best] : null;
   }
