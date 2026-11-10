@@ -39,7 +39,7 @@ TDX_SECRET=xxx
 
 - 預設縣市為高雄（`Kaohsiung`）。要改縣市，在 `docs/config.js` 加上 `window.TRA_BUS_CITY = 'Taipei';`（TDX 的縣市英文名）。
 - Worker 提供 `/api/bus/routes`、`stops`、`eta`、`pos`（即時座標）、`shape`（路線形狀）、`vehicle`、`schedule`（班表），參數為 `city`、`route`。
-- 站站時刻表：優先使用 TDX 班表；TDX 沒有該路線班表時，改用 `docs/schedule-local.json`（手動維護，目前收錄 60、60區間，資料來自高雄市公車處）。新增路線時，依既有格式加入即可。
+- 站站時刻表：優先使用 TDX 班表；TDX 沒有該路線班表時，改用 `docs/schedule-local.json`（手動維護，目前收錄 60、60區間，資料來自高雄市公車處）。新增路線時，依既有格式加入即可。路線名稱會寬鬆比對：完全相同優先，其次是 `aliases` 別名，再其次是路線名稱以該鍵開頭（例如 TDX 的「60覺民幹線」可對上鍵「60」，但「600」「60A」不會）。若某路線顯示不出手動班表，打開瀏覽器 Console 會看到可用的鍵與實際路線名稱。
 - 到站時間每 20 秒自動更新（僅在公車分頁可見時）。
 
 ## 記憶功能（localStorage）

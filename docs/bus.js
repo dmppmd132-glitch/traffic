@@ -303,6 +303,24 @@
     return localSchedulePromise;
   }
 
+  // 依路線名稱找手動班表：完全相同 > aliases 別名 > 名稱以某個鍵開頭
+  // 例如 TDX 的路線名稱是「60覺民幹線」，檔案裡寫「60」也能對上；取最長的鍵，
+  // 且鍵後面不能接數字或英文字母（避免「600」「60A」誤對到「60」）
+  function findLocalSchedule(local, route) {
+    if (!local || !route) return null;
+    if (local[route]) return local[route];
+    const keys = Object.keys(local);
+    for (const k of keys) {
+      const al = local[k] && local[k].aliases;
+      if (Array.isArray(al) && al.includes(route)) return local[k];
+    }
+    let best = null;
+    for (const k of keys) {
+      if (route.startsWith(k) && !/[0-9A-Za-z]/.test(route.charAt(k.length)) && (!best || k.length > best.length)) best = k;
+    }
+    return best ? local[best] : null;
+  }
+
   const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(t); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
   const fmtMin = (n) => `${String(Math.floor(n / 60) % 24).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
 
@@ -651,8 +669,9 @@
         if (!parsed.length && !(parsed.freqs || []).length) {
           const local = await loadLocalSchedule();
           if (stale()) return;
-          const info = local[route];
+          const info = findLocalSchedule(local, route);
           if (info && renderLocalSchedule(info, entry)) return;
+          if (!info) console.info('手動班表沒有對應的路線：', route, '（可用的鍵：', Object.keys(local).join('、'), '）');
         }
         renderTimetable(parsed);
       } catch (err) {
