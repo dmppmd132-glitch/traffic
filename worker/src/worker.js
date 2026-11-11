@@ -344,16 +344,28 @@ async function tdxGeocode(env, q) {
 
 // OpenStreetMap 備援：逐步放寬（原文 → 去門牌號 → 去弄 → 去巷），並在縣市區後補空格
 async function osmGeocode(q) {
+  const compact = (s) => String(s || '').replace(/[\s、，,。．.（）()\-—_]/g, '').toLowerCase();
+  const street = (q.match(/[\u4e00-\u9fff]{1,10}[路街大道]/) || [])[0] || '';
+  const numbers = (q.match(/[0-9０-９]+/g) || []).map((n) => n.replace(/[０-９]/g, (c) => String('０１２３４５６７８９'.indexOf(c))));
+  const addressLike = /[路街巷弄段]|[0-9０-９]\s*號/.test(q);
   const search = async (text) => {
     const api = 'https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=tw&limit=6&accept-language=zh-TW'
       + '&viewbox=' + GEO_VIEWBOX + '&q=' + encodeURIComponent(text);
     const r = await fetch(api, { headers: { 'user-agent': GEO_UA } });
     if (!r.ok) throw new Error('nominatim ' + r.status);
-    return (await r.json()).map((x) => ({
+    const list = (await r.json()).map((x) => ({
       name: (x.name || (x.display_name || '').split(',')[0] || '').trim(),
       label: (x.display_name || '').split(',').slice(0, 4).map((s) => s.trim()).join('、'),
       lat: Number(x.lat), lon: Number(x.lon),
     })).filter((x) => x.name && Number.isFinite(x.lat) && Number.isFinite(x.lon));
+    if (!addressLike) return list;
+    // 地址搜尋不能只接受同縣市的模糊候選；至少要命中街名與主要門牌號碼。
+    return list.filter((x) => {
+      const text = compact(`${x.name} ${x.label}`);
+      const streetOk = !street || text.includes(compact(street));
+      const numberOk = numbers.length < 2 || numbers.every((n) => text.includes(n));
+      return streetOk && numberOk;
+    });
   };
   const spaced = (t) => {
     const m = t.match(/^(\S{2,3}[縣市])?(\S{1,3}[區鄉鎮])?(.*)$/);
