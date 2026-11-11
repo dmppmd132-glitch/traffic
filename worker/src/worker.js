@@ -248,7 +248,7 @@ async function planGet(env, ctx, url) {
 
 // 地名搜尋（OpenStreetMap Nominatim，限台灣）：回傳 [{name, label, lat, lon}]
 // OSM 的台灣門牌資料不完整，帶門牌號碼（如「新建南路1號」）常查不到，所以依序放寬：
-//   1) 原文  2) 去掉門牌號碼，只查路名／地名
+//   依序：原文 → 去掉門牌號 → 去掉弄 → 去掉巷（只查路名／地名），並在縣市區後補空格
 // 搜尋範圍以台北、新北為優先（viewbox 只影響排序，不會排除其他縣市）。
 // 有結果才快取一天；空結果不快取，避免一次查不到就好幾天都查不到。
 const GEO_VIEWBOX = '121.3,25.3,122.0,24.65'; // 左經度,上緯度,右經度,下緯度（涵蓋台北市、新北市）
@@ -258,7 +258,7 @@ async function geocodeGet(ctx, url) {
   const q = (url.searchParams.get('q') || '').trim();
   if (q.length < 1 || q.length > 60 || /[\u0000-\u001F\u007F]/.test(q)) return json({ error: '搜尋文字格式錯誤' }, 400);
   const cache = caches.default;
-  const cacheKey = new Request('https://cache.local/geocode3?q=' + encodeURIComponent(q));
+  const cacheKey = new Request('https://cache.local/geocode4?q=' + encodeURIComponent(q));
   const hit = await cache.match(cacheKey);
   if (hit) return hit;
 
@@ -274,10 +274,20 @@ async function geocodeGet(ctx, url) {
     })).filter((x) => x.name && Number.isFinite(x.lat) && Number.isFinite(x.lon));
   };
 
-  // 去掉結尾的門牌號碼（含「之幾」「幾樓」等）
+  // 逐步放寬：原文 → 去門牌號 → 去弄 → 去巷（只剩路名）。
+  // 另外把「縣市／區」與路名之間補上空格（Nominatim 不會自己切開中文，「板橋區金門街」會被當成一個詞而查不到）。
+  const spaced = (t) => {
+    const m = t.match(/^(\S{2,3}[縣市])?(\S{1,3}[區鄉鎮])?(.*)$/);
+    return m ? [m[1], m[2], m[3]].filter(Boolean).join(' ').trim() : t;
+  };
   const noNumber = q.replace(/\s*[0-9０-９]+(?:之[0-9０-９]+)?\s*號.*$/, '').trim();
-  const attempts = [q];
-  if (noNumber && noNumber !== q) attempts.push(noNumber);
+  const noAlley = noNumber.replace(/\s*[0-9０-９]+\s*弄.*$/, '').trim();
+  const noLane = noAlley.replace(/\s*[0-9０-９]+\s*巷.*$/, '').trim();
+  const attempts = [];
+  for (const t of [q, noNumber, noAlley, noLane]) {
+    const v = spaced(t);
+    if (v && !attempts.includes(v)) attempts.push(v);
+  }
 
   let list = [];
   try {
