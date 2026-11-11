@@ -191,7 +191,8 @@ async function scheduleGet(env, ctx, city, route, name) {
 
 // ---------- 路線規劃（TDX 運具整合路徑規劃）----------
 // 網址可用環境變數 PLAN_URL 覆寫（TDX 若調整版本，不用改程式）
-const PLAN_URL_DEFAULT = 'https://tdx.transportdata.tw/api/maps/routing/v3.0/transit';
+// TDX MaaS「公共運輸旅運規劃功能模組」：https://tdx.transportdata.tw/api/maas/routing
+const PLAN_URL_DEFAULT = 'https://tdx.transportdata.tw/api/maas/routing';
 
 async function planGet(env, ctx, url) {
   const num = (k) => { const v = url.searchParams.get(k); return v !== null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null; };
@@ -210,17 +211,26 @@ async function planGet(env, ctx, url) {
   if (hit) return hit;
 
   const base = env.PLAN_URL || PLAN_URL_DEFAULT;
-  const call = async (extra) => fetch(`${base}?origin=${r5(olat)},${r5(olon)}&destination=${r5(dlat)},${r5(dlon)}${extra}`, {
+  // 出發時間：台北時間「現在 + 5 分鐘」進位到整分（TDX 不接受「現在」或過去的時間），格式 YYYY-MM-DDTHH:mm:ss
+  const t = new Date(Math.ceil((Date.now() + 5 * 60000) / 60000) * 60000 + 8 * 3600000);
+  const p2 = (n) => String(n).padStart(2, '0');
+  const depart = `${t.getUTCFullYear()}-${p2(t.getUTCMonth() + 1)}-${p2(t.getUTCDate())}T${p2(t.getUTCHours())}:${p2(t.getUTCMinutes())}:00`;
+  const od = `origin=${r5(olat)},${r5(olon)}&destination=${r5(dlat)},${r5(dlon)}`;
+  const call = async (extra) => fetch(`${base}?${od}${extra}`, {
     headers: { authorization: `Bearer ${await getToken(env)}`, 'accept-encoding': 'gzip' },
   });
-  let upstream = await call('&top=5');
-  // 參數被拒絕（400 / 422）時，改用最精簡的參數再試一次
-  if (upstream.status === 400 || upstream.status === 422) upstream = await call('');
-  if (upstream.status === 429 || upstream.status >= 500) { await sleep(700); upstream = await call(''); }
+  // 先用完整參數；被拒絕（400 / 404 / 422）就改用最精簡的參數再試，並保留第一次的錯誤方便排查
+  let upstream = await call(`&gc=1&top=5&first_mile_mode=0&last_mile_mode=0&depart=${depart}`);
+  let firstErr = '';
+  if (upstream.status === 400 || upstream.status === 404 || upstream.status === 422) {
+    try { firstErr = (await upstream.text()).slice(0, 200); } catch { /* 忽略 */ }
+    upstream = await call(`&depart=${depart}`);
+  }
+  if (upstream.status === 429 || upstream.status >= 500) { await sleep(700); upstream = await call(`&depart=${depart}`); }
   if (!upstream.ok) {
     let detail = '';
     try { detail = (await upstream.text()).slice(0, 300); } catch { /* 忽略 */ }
-    return json({ error: 'TDX 路線規劃回應錯誤', status: upstream.status, base, detail }, 502);
+    return json({ error: 'TDX 路線規劃回應錯誤', status: upstream.status, base, depart, detail, firstErr }, 502);
   }
   const res = new Response(upstream.body, {
     status: 200,

@@ -38,7 +38,9 @@
   const toMs = (v) => {
     if (v === undefined || v === null || v === '') return null;
     if (typeof v === 'number') return v > 1e12 ? v : v * 1000;
-    const t = Date.parse(v);
+    // TDX 回傳的時間沒有時區（台北時間），補上 +08:00 才不會因手機時區而偏移
+    const str = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(String(v)) ? `${v}+08:00` : v;
+    const t = Date.parse(str);
     return Number.isNaN(t) ? null : t;
   };
   const hhmm = (ms) => { if (ms === null) return ''; const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
@@ -67,7 +69,8 @@
 
   function parseRoute(r) {
     const secs = get(r, 'sections', 'legs', 'Sections', 'steps') || [];
-    const parts = secs.map((s) => {
+    const list = Array.isArray(secs) ? secs : Object.values(secs || {});
+    const parts = list.filter((s) => get(s, 'type') !== 'waiting').map((s) => { // waiting = 候車時間，不單獨列出
       const dep = get(s, 'departure', 'origin') || {};
       const arr = get(s, 'arrival', 'destination') || {};
       const t = get(s, 'transport') || {};
@@ -80,7 +83,7 @@
       const place = (x) => nm(x.place && (x.place.name || x.place)) || nm(x.name) || nm(x.stop) || nm(x.station) || '';
       return {
         mode,
-        line: nm(t.name) || nm(t.shortName) || nm(get(s, 'line', 'route', 'routeName', 'name')) || '',
+        line: nm(t.shortName) || nm(t.name) || nm(get(s, 'line', 'route', 'routeName', 'name')) || '',
         head: nm(t.headsign) || nm(get(s, 'headsign', 'direction')) || '',
         from: place(dep), to: place(arr), dMs, aMs, dur,
       };
