@@ -246,22 +246,55 @@ async function planGet(env, ctx, url) {
   return res;
 }
 
-// 地名搜尋（OpenStreetMap Nominatim，限台灣）：回傳 [{name, label, lat, lon}]，快取一天
+// 地名搜尋（OpenStreetMap Nominatim，限台灣）：回傳 [{name, label, lat, lon}]
+// OSM 的台灣門牌資料不完整，帶門牌號碼（如「新建南路1號」）常查不到，所以依序放寬：
+//   1) 原文  2) 去掉門牌號碼，只查路名／地名
+// 搜尋範圍以台北、新北為優先（viewbox 只影響排序，不會排除其他縣市）。
+// 有結果才快取一天；空結果不快取，避免一次查不到就好幾天都查不到。
+const GEO_VIEWBOX = '121.3,25.3,122.0,24.65'; // 左經度,上緯度,右經度,下緯度（涵蓋台北市、新北市）
+const GEO_UA = 'yayu-transit-planner (personal PWA; github.com/dmppmd132-glitch/traffic)';
+
 async function geocodeGet(ctx, url) {
   const q = (url.searchParams.get('q') || '').trim();
   if (q.length < 1 || q.length > 60 || /[\u0000-\u001F\u007F]/.test(q)) return json({ error: '搜尋文字格式錯誤' }, 400);
   const cache = caches.default;
-  const cacheKey = new Request('https://cache.local/geocode?q=' + encodeURIComponent(q));
+  const cacheKey = new Request('https://cache.local/geocode3?q=' + encodeURIComponent(q));
   const hit = await cache.match(cacheKey);
   if (hit) return hit;
-  const api = 'https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=tw&limit=6&accept-language=zh-TW&q=' + encodeURIComponent(q);
-  const upstream = await fetch(api, { headers: { 'user-agent': 'yayu-transit-planner (personal PWA; github.com/dmppmd132-glitch/traffic)' } });
-  if (!upstream.ok) return json({ error: '地名搜尋失敗', status: upstream.status }, 502);
-  const list = (await upstream.json()).map((r) => ({
-    name: (r.name || (r.display_name || '').split(',')[0] || '').trim(),
-    label: (r.display_name || '').split(',').slice(0, 4).map((s) => s.trim()).join('、'),
-    lat: Number(r.lat), lon: Number(r.lon),
-  })).filter((r) => r.name && Number.isFinite(r.lat) && Number.isFinite(r.lon));
+
+  const search = async (text) => {
+    const api = 'https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=tw&limit=6&accept-language=zh-TW'
+      + '&viewbox=' + GEO_VIEWBOX + '&q=' + encodeURIComponent(text);
+    const r = await fetch(api, { headers: { 'user-agent': GEO_UA } });
+    if (!r.ok) throw new Error('nominatim ' + r.status);
+    return (await r.json()).map((x) => ({
+      name: (x.name || (x.display_name || '').split(',')[0] || '').trim(),
+      label: (x.display_name || '').split(',').slice(0, 4).map((s) => s.trim()).join('、'),
+      lat: Number(x.lat), lon: Number(x.lon),
+    })).filter((x) => x.name && Number.isFinite(x.lat) && Number.isFinite(x.lon));
+  };
+
+  // 去掉結尾的門牌號碼（含「之幾」「幾樓」等）
+  const noNumber = q.replace(/\s*[0-9０-９]+(?:之[0-9０-９]+)?\s*號.*$/, '').trim();
+  const attempts = [q];
+  if (noNumber && noNumber !== q) attempts.push(noNumber);
+
+  let list = [];
+  try {
+    for (let i = 0; i < attempts.length; i++) {
+      if (i > 0) await sleep(1100); // Nominatim 限制每秒 1 次
+      list = await search(attempts[i]);
+      if (list.length) break;
+    }
+  } catch (err) {
+    return json({ error: '地名搜尋失敗', detail: String(err.message || err) }, 502);
+  }
+
+  if (!list.length) {
+    return new Response('[]', {
+      headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+    });
+  }
   const res = new Response(JSON.stringify(list), {
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=86400' },
   });
