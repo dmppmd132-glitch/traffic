@@ -78,6 +78,7 @@ async function getToken(env) {
 async function tdxGet(env, ctx, path, ttl, query = '', skipEmpty = false) {
   const cache = caches.default;
   const cacheKey = new Request('https://cache.local' + path + '?' + query);
+  const staleKey = new Request('https://cache.local/stale' + path + '?' + query);
 
   const hit = await cache.match(cacheKey);
   if (hit) return hit;
@@ -99,6 +100,16 @@ async function tdxGet(env, ctx, path, ttl, query = '', skipEmpty = false) {
   }
 
   if (!upstream.ok) {
+    // 即時資料（快取 ≤ 60 秒）遇到 429 / 5xx 時，若有上一次成功的資料就先回舊的，使用者不會看到錯誤
+    if (ttl <= 60 && (upstream.status === 429 || upstream.status >= 500)) {
+      const old = await cache.match(staleKey);
+      if (old) {
+        const r = new Response(old.body, old);
+        r.headers.set('x-stale', '1');
+        r.headers.set('cache-control', 'no-store');
+        return r;
+      }
+    }
     let detail = '';
     try { detail = (await upstream.text()).slice(0, 200); } catch { /* 忽略 */ }
     return json({ error: 'TDX 回應錯誤', status: upstream.status, path, detail }, 502);
@@ -132,6 +143,13 @@ async function tdxGet(env, ctx, path, ttl, query = '', skipEmpty = false) {
     },
   });
   ctx.waitUntil(cache.put(cacheKey, res.clone()));
+  if (ttl <= 60) {
+    const keep = new Response(res.clone().body, {
+      status: 200,
+      headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=600' },
+    });
+    ctx.waitUntil(cache.put(staleKey, keep));
+  }
   return res;
 }
 
@@ -244,7 +262,7 @@ async function route(env, ctx, url) {
       // 路線車輛位置：用於地圖上的公車圖示（快取 15 秒）
       if (p === '/api/bus/vehicle') {
         return await tdxGet(
-          env, ctx, `/v2/Bus/Vehicle/City/${city}/${name}`, 15,
+          env, ctx, `/v2/Bus/Vehicle/City/${city}/${name}`, 20,
           '%24select=PlateNumb,RouteUID,RouteName,SubRouteUID,Direction,Position,Speed,Azimuth,UpdateTime'
         );
       }
@@ -252,7 +270,7 @@ async function route(env, ctx, url) {
       // 公車即時座標（RealTimeByFrequency）：地圖上的公車圖示與車號
       if (p === '/api/bus/pos') {
         return await tdxGet(
-          env, ctx, `/v2/Bus/RealTimeByFrequency/City/${city}/${name}`, 10,
+          env, ctx, `/v2/Bus/RealTimeByFrequency/City/${city}/${name}`, 20,
           '%24select=RouteName,SubRouteUID,Direction,PlateNumb,BusPosition,BusStatus,DutyStatus'
         );
       }
@@ -265,7 +283,7 @@ async function route(env, ctx, url) {
       // 即時到站時間：/api/bus/eta?city=Kaohsiung&route=紅9（資料很即時，只快取 15 秒）
       if (p === '/api/bus/eta') {
         return await tdxGet(
-          env, ctx, `/v2/Bus/EstimatedTimeOfArrival/City/${city}/${name}`, 15,
+          env, ctx, `/v2/Bus/EstimatedTimeOfArrival/City/${city}/${name}`, 20,
           '%24select=RouteName,SubRouteUID,Direction,StopUID,StopStatus,EstimateTime,NextBusTime,UpdateTime'
         );
       }

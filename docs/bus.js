@@ -637,7 +637,8 @@
   // 畫公車並更新狀態文字（posData 為 null 代表取得失敗）
   function showBuses(entry, posData) {
     if (!posData) {
-      $('busMapStatus').textContent = '公車位置暫時無法取得';
+      // 保留畫面上原有的公車圖示，下次自動更新（20 秒）會再試
+      $('busMapStatus').textContent = '公車位置暫時無法取得，稍後自動重試';
       return;
     }
     const n = drawBuses(entry, posData);
@@ -650,7 +651,8 @@
     const entry = cur.entries[cur.active];
     const route = cur.route;
     const pos = await api(apiQ('pos', route)).catch(() => null);
-    if (!pos || !cur || cur.route !== route || cur.entries[cur.active] !== entry) return;
+    if (!cur || cur.route !== route || cur.entries[cur.active] !== entry) return;
+    if (!pos) { $('busMapStatus').textContent = '公車位置暫時無法取得，稍後自動重試'; return; }
     showBuses(entry, pos);
   }
 
