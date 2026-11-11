@@ -1,6 +1,6 @@
 // Service Worker：App 外殼快取 + API 網路優先
 // 每次改了前端檔案，記得把 VERSION 加一，舊快取才會被清掉
-const VERSION = 'v26';
+const VERSION = 'v27';
 const SHELL = `tra-shell-${VERSION}`;
 const DATA = `tra-data-${VERSION}`;
 
@@ -24,9 +24,10 @@ const SHELL_FILES = [
   'yayu/index.html',
   'yayu/profile.js',
   'yayu/manifest.webmanifest',
-  'yayu/icon.svg',
   'yayu/icon-192.png',
   'yayu/icon-512.png',
+  'yayu/icon-maskable-512.png',
+  'yayu/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (e) => {
