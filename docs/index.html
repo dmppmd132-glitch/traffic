@@ -22,6 +22,7 @@
     <button type="button" data-tab="rail" class="on">台鐵</button>
     <button type="button" data-tab="bus">公車</button>
     <button type="button" data-tab="metro">捷運輕軌</button>
+    <button type="button" data-tab="bike">YouBike</button>
   </nav>
 
   <main id="railView">
@@ -164,10 +165,35 @@
     </section>
   </main>
 
+  <main id="bikeView" hidden>
+    <section class="card" id="bikeSearchCard">
+      <label>
+        <span>站點</span>
+        <div class="input-clear">
+          <input id="bikeInput" placeholder="輸入站名或地址，例如 美麗島" autocomplete="off" inputmode="search" enterkeyhint="search">
+          <button id="bikeClear" type="button" class="clear-btn" hidden>✕ 清除</button>
+        </div>
+      </label>
+      <div class="actions">
+        <button id="bikeNear" type="button" class="primary">◎ 找附近的站點</button>
+      </div>
+      <p id="bikeMsg" class="msg" role="status"></p>
+      <p id="bikeUpdated" class="msg info"></p>
+    </section>
+
+    <section class="card" id="bikeFavCard" hidden>
+      <h2>常用站點</h2>
+      <div id="bikeFavs"></div>
+    </section>
+
+    <section id="bikeResults" aria-live="polite"></section>
+  </main>
+
   <datalist id="stationList"></datalist>
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script src="bus.js"></script>
   <script src="metro.js"></script>
+  <script src="bike.js"></script>
 </body>
 </html>

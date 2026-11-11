@@ -66,6 +66,13 @@ TDX_SECRET=xxx
 - Worker 提供 `/api/metro/stations`（路線與車站，快取 1 天）與 `/api/metro/live`（即時到站看板，快取 15 秒），參數為 `op`。
 - 即時資料不會被 Service Worker 快取。
 
+## YouBike（一般版）
+
+- 分頁「YouBike」：站名或地址搜尋、「找附近的站點」（依手機定位排序）、常用站點、即時可借 / 可還數量（每 30 秒更新）、Google 地圖步行導航連結。
+- Worker：`/api/bike/stations`（站點清單，快取 1 天）、`/api/bike/availability`（即時數量，整個縣市一次回傳，快取 30 秒），參數 `city`（預設 `Kaohsiung`）。
+- 前端：`docs/bike.js`。Yayu 版沒有這個分頁。
+- 資料欄位依 TDX 公共自行車 API（`/v2/Bike/Station/City/{City}`、`/v2/Bike/Availability/City/{City}`）撰寫；若 TDX 回傳欄位不同，到 `bike.js` 的 `parseStations`、`refreshAvail` 調整。
+
 ## 個人版（Yayu）與主題
 
 同一套程式、同一個 Worker，用子資料夾提供不同介面：

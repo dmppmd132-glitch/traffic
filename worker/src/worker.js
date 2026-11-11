@@ -289,6 +289,28 @@ async function route(env, ctx, url) {
       }
     }
 
+    // ---------- 公共自行車（YouBike）----------
+    if (p.startsWith('/api/bike/')) {
+      const city = url.searchParams.get('city') || 'Kaohsiung';
+      if (!/^[A-Za-z]{3,30}$/.test(city)) return json({ error: '縣市參數錯誤' }, 400);
+
+      // 站點清單（位置、地址、車柱數）：一天快取，只取需要的欄位
+      if (p === '/api/bike/stations') {
+        return await tdxGet(
+          env, ctx, `/v2/Bike/Station/City/${city}`, 86400,
+          '%24select=StationUID,StationID,StationName,StationPosition,StationAddress,BikesCapacity,ServiceType'
+        );
+      }
+
+      // 即時可借 / 可還數量（整個縣市一次回傳，快取 30 秒）
+      if (p === '/api/bike/availability') {
+        return await tdxGet(
+          env, ctx, `/v2/Bike/Availability/City/${city}`, 30,
+          '%24select=StationUID,StationID,ServiceStatus,AvailableRentBikes,AvailableReturnBikes,UpdateTime'
+        );
+      }
+    }
+
     // ---------- 捷運 / 輕軌 ----------
     // KRTC 高雄捷運、KLRT 高雄輕軌、TRTC 臺北捷運、NTMC 新北捷運（環狀線）、NTDLRT 淡海輕軌、NTALRT 安坑輕軌
     if (p.startsWith('/api/metro/')) {

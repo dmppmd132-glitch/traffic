@@ -1132,6 +1132,8 @@
     $('busView').hidden = tab !== 'bus';
     const mv = $('metroView');
     if (mv) mv.hidden = tab !== 'metro';
+    const bv = $('bikeView');
+    if (bv) bv.hidden = tab !== 'bike';
     document.querySelectorAll('.tabs button').forEach((b) => {
       b.classList.toggle('on', b.dataset.tab === tab);
     });
@@ -1195,5 +1197,5 @@
 
   // 還原上次使用的分頁
   const savedTab = store.get(KEY.tab, 'rail');
-  setTab(savedTab === 'bus' || savedTab === 'metro' ? savedTab : 'rail');
+  setTab(['bus', 'metro', 'bike'].includes(savedTab) && $(savedTab + 'View') ? savedTab : 'rail');
 })();
