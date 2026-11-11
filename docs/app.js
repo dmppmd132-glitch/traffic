@@ -417,20 +417,62 @@
       $(id).addEventListener('change', () => { if (currentRoute()) search(); });
     }
 
-    // 個人版選項（clearOnFocus）：點進輸入框時暫時清空，讓下拉選單列出所有車站
-    // （瀏覽器預設只列出符合目前文字的項目）；沒選新車站就離開時，還原原本的站名
+    // 個人版選項（clearOnFocus）：點進車站輸入框時，原站名變灰色提示、輸入框清空，
+    // 並用自己做的選單列出「全部車站」，打字時再依文字篩選。
+    // （瀏覽器內建的下拉選單只會列出符合目前文字的項目，也無法由程式主動打開，所以改用自訂選單）
     if (PROFILE.clearOnFocus) {
       for (const id of ['fromInput', 'toInput']) {
         const el = $(id);
+        el.removeAttribute('list');            // 不用內建的 datalist，避免兩個選單同時出現
+        el.parentElement.classList.add('st-wrap');
+        const pop = document.createElement('div');
+        pop.className = 'st-pop';
+        pop.hidden = true;
+        el.parentElement.append(pop);
+
+        const fill = () => {
+          const q = norm(el.value);
+          const items = stations.filter((s) => !q || norm(s.name).includes(q) || String(s.id).startsWith(q));
+          pop.replaceChildren(...items.map((s) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'st-item';
+            b.textContent = s.name;
+            // 用 mousedown / pointerdown 搶在輸入框失焦之前選取，手機與電腦都適用
+            const pick = (e) => {
+              e.preventDefault();
+              el.value = s.name;
+              delete el.dataset.prev;
+              pop.hidden = true;
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              el.blur();
+            };
+            b.addEventListener('pointerdown', pick);
+            return b;
+          }));
+          if (!items.length) {
+            const e = document.createElement('div');
+            e.className = 'st-empty';
+            e.textContent = '找不到符合的車站';
+            pop.replaceChildren(e);
+          }
+        };
+
         el.addEventListener('focus', () => {
-          if (!el.value) return;
-          el.dataset.prev = el.value;
-          el.dataset.ph = el.placeholder;
-          el.placeholder = el.value;   // 原站名以灰字顯示，提醒目前選的是哪一站
-          el.value = '';
-          refreshFavButton();
+          if (el.value) {
+            el.dataset.prev = el.value;
+            el.dataset.ph = el.placeholder;
+            el.placeholder = el.value;       // 原站名以灰字顯示，提醒目前選的是哪一站
+            el.value = '';
+            refreshFavButton();
+          }
+          fill();
+          pop.hidden = false;
         });
+        el.addEventListener('input', () => { fill(); pop.hidden = false; });
         el.addEventListener('blur', () => {
+          pop.hidden = true;
           if (el.dataset.prev !== undefined) {
             if (!el.value) { el.value = el.dataset.prev; refreshFavButton(); }
             el.placeholder = el.dataset.ph || '';
