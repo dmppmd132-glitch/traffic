@@ -194,6 +194,9 @@ async function scheduleGet(env, ctx, city, route, name) {
 // TDX MaaS「公共運輸旅運規劃功能模組」：https://tdx.transportdata.tw/api/maas/routing
 const PLAN_URL_DEFAULT = 'https://tdx.transportdata.tw/api/maas/routing';
 
+// 記住上一次成功的運具代碼組合（只存在記憶體，Worker 重啟後會重新嘗試）
+let planTransitOk = '';
+
 async function planGet(env, ctx, url) {
   const num = (k) => { const v = url.searchParams.get(k); return v !== null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null; };
   const olat = num('olat'), olon = num('olon'), dlat = num('dlat'), dlon = num('dlon');
@@ -219,14 +222,23 @@ async function planGet(env, ctx, url) {
   const call = async (extra) => fetch(`${base}?${od}${extra}`, {
     headers: { authorization: `Bearer ${await getToken(env)}`, 'accept-encoding': 'gzip' },
   });
-  // 先用完整參數；被拒絕（400 / 404 / 422）就改用最精簡的參數再試，並保留第一次的錯誤方便排查
-  let upstream = await call(`&gc=1&top=5&first_mile_mode=0&last_mile_mode=0&depart=${depart}`);
-  let firstErr = '';
-  if (upstream.status === 400 || upstream.status === 404 || upstream.status === 422) {
-    try { firstErr = (await upstream.text()).slice(0, 200); } catch { /* 忽略 */ }
-    upstream = await call(`&depart=${depart}`);
+  // transit（運具代碼）與 gc 為 TDX 必填。代碼對照尚未能從官方文件確認，所以依序嘗試幾組，
+  // 成功的那組會記在記憶體中，之後直接使用；也可用 Worker 環境變數 PLAN_TRANSIT 固定指定（例如 1,2,3,4,5,6,7）
+  const common = `&gc=1&top=5&first_mile_mode=0&last_mile_mode=0&depart=${depart}`;
+  const transitSets = env.PLAN_TRANSIT ? [env.PLAN_TRANSIT] : [planTransitOk, '1,2,3,4,5,6,7,8,9', '1,2,3,4,5,6,7', '3,4,5,6,7'].filter((v, i, arr) => v && arr.indexOf(v) === i);
+  let upstream = null;
+  const errors = [];
+  for (const set of transitSets) {
+    upstream = await call(`${common}&transit=${set}`);
+    if (upstream.status === 429 || upstream.status >= 500) { await sleep(700); upstream = await call(`${common}&transit=${set}`); }
+    if (upstream.ok) { planTransitOk = set; break; }
+    // 參數問題（400 / 404 / 422）才換下一組；其他錯誤（401、5xx）換了也沒用
+    let msg = '';
+    try { msg = (await upstream.clone().text()).slice(0, 160); } catch { /* 忽略 */ }
+    errors.push(`transit=${set} → ${upstream.status} ${msg}`);
+    if (![400, 404, 422].includes(upstream.status)) break;
   }
-  if (upstream.status === 429 || upstream.status >= 500) { await sleep(700); upstream = await call(`&depart=${depart}`); }
+  const firstErr = errors.join(' || ');
   if (!upstream.ok) {
     let detail = '';
     try { detail = (await upstream.text()).slice(0, 300); } catch { /* 忽略 */ }
