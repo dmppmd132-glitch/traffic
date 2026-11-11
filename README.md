@@ -66,6 +66,16 @@ TDX_SECRET=xxx
 - Worker 提供 `/api/metro/stations`（路線與車站，快取 1 天）與 `/api/metro/live`（即時到站看板，快取 15 秒），參數為 `op`。
 - 即時資料不會被 Service Worker 快取。
 
+## Token 共用（KV，建議）
+
+TDX 對取得 token 有頻率限制，多個 Worker 實例同時取會遇到 429。綁定 KV 後 token 會跨實例共用：
+
+1. 建立 KV 命名空間（目前名稱 `tra-token`）。
+2. 在 Worker 的 Settings → Bindings 新增 KV namespace，變數名稱必須是 `TOKEN_KV`。
+3. 驗證：呼叫一次 API 後，KV 裡會出現 `tdx_token` 這筆。沒綁定時會退回每個實例各自取 token。
+
+目前線上狀態：`TOKEN_KV`（tra-token）與 `DB`（tra-timetable，已建立 `bus_schedule_cache`）皆已在網頁上綁定。
+
 ## 班表快取（D1，選用）
 
 公車班表資料量大，第一次查詢可能較慢。啟用 Cloudflare D1 後，Worker 會把班表存起來，24 小時內直接回傳：
