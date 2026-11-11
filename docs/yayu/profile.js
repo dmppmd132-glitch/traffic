@@ -5,6 +5,7 @@ window.TRA_PROFILE = {
   prefix: 'yayu.',          // localStorage 前綴，避免與一般版的常用路線混在一起
   root: '../',              // 相對於此版入口，共用檔案（sw.js 等）所在位置
   theme: 'pig',
+  clearOnFocus: true,       // 車站輸入框點進去會先清空，下拉選單才會列出全部車站
   busEmoji: '🐷',            // 地圖上的公車圖示（兔子版可改 🐰）
   cities: [
     { id: 'Taipei', name: '台北', center: [25.0478, 121.5170] },

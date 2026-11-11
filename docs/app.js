@@ -417,6 +417,29 @@
       $(id).addEventListener('change', () => { if (currentRoute()) search(); });
     }
 
+    // 個人版選項（clearOnFocus）：點進輸入框時暫時清空，讓下拉選單列出所有車站
+    // （瀏覽器預設只列出符合目前文字的項目）；沒選新車站就離開時，還原原本的站名
+    if (PROFILE.clearOnFocus) {
+      for (const id of ['fromInput', 'toInput']) {
+        const el = $(id);
+        el.addEventListener('focus', () => {
+          if (!el.value) return;
+          el.dataset.prev = el.value;
+          el.dataset.ph = el.placeholder;
+          el.placeholder = el.value;   // 原站名以灰字顯示，提醒目前選的是哪一站
+          el.value = '';
+          refreshFavButton();
+        });
+        el.addEventListener('blur', () => {
+          if (el.dataset.prev !== undefined) {
+            if (!el.value) { el.value = el.dataset.prev; refreshFavButton(); }
+            el.placeholder = el.dataset.ph || '';
+            delete el.dataset.prev; delete el.dataset.ph;
+          }
+        });
+      }
+    }
+
     // 回到前景時，把時間更新到現在（只在使用者沒改過日期時）
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && $('dateInput').value === todayStr()) {
