@@ -429,6 +429,8 @@
         pop.className = 'st-pop';
         pop.hidden = true;
         el.parentElement.append(pop);
+        // 在選單上按下時不要讓輸入框失焦（否則選單會在點選前就被收起）；不影響手指捲動
+        pop.addEventListener('mousedown', (e) => e.preventDefault());
 
         const fill = () => {
           const q = norm(el.value);
@@ -438,7 +440,7 @@
             b.type = 'button';
             b.className = 'st-item';
             b.textContent = s.name;
-            // 用 mousedown / pointerdown 搶在輸入框失焦之前選取，手機與電腦都適用
+            // 點一下才選取（用 click，手指往下滑動捲動清單時不會誤選）
             const pick = (e) => {
               e.preventDefault();
               el.value = s.name;
@@ -448,7 +450,7 @@
               el.dispatchEvent(new Event('change', { bubbles: true }));
               el.blur();
             };
-            b.addEventListener('pointerdown', pick);
+            b.addEventListener('click', pick);
             return b;
           }));
           if (!items.length) {
