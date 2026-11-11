@@ -246,22 +246,90 @@ async function planGet(env, ctx, url) {
   return res;
 }
 
-// 地名搜尋（OpenStreetMap Nominatim，限台灣）：回傳 [{name, label, lat, lon}]
-// OSM 的台灣門牌資料不完整，帶門牌號碼（如「新建南路1號」）常查不到，所以依序放寬：
-//   依序：原文 → 去掉門牌號 → 去掉弄 → 去掉巷（只查路名／地名），並在縣市區後補空格
-// 搜尋範圍以台北、新北為優先（viewbox 只影響排序，不會排除其他縣市）。
-// 有結果才快取一天；空結果不快取，避免一次查不到就好幾天都查不到。
-const GEO_VIEWBOX = '121.3,25.3,122.0,24.65'; // 左經度,上緯度,右經度,下緯度（涵蓋台北市、新北市）
+// ---------- 地名搜尋 ----------
+// 優先使用 TDX「空間查詢-定位 v3」的地理編碼（內政部門牌資料，台灣門牌最準）：
+//   地址：/V3/Map/GeoCode/Coordinate/Address/{地址}　　地標：/V3/Map/GeoCode/Coordinate/Markname/{名稱}
+// TDX 查不到或失敗（例如帳號沒有進階服務權限）時，退回 OpenStreetMap Nominatim。
+// 回傳 [{name, label, lat, lon}]；有結果才快取一天，空結果不快取。
+const TDX_ADV = 'https://tdx.transportdata.tw/api/advanced';
+const GEO_VIEWBOX = '121.3,25.3,122.0,24.65'; // OSM 備援：左經度,上緯度,右經度,下緯度（優先台北市、新北市）
 const GEO_UA = 'yayu-transit-planner (personal PWA; github.com/dmppmd132-glitch/traffic)';
 
-async function geocodeGet(ctx, url) {
-  const q = (url.searchParams.get('q') || '').trim();
-  if (q.length < 1 || q.length > 60 || /[\u0000-\u001F\u007F]/.test(q)) return json({ error: '搜尋文字格式錯誤' }, 400);
-  const cache = caches.default;
-  const cacheKey = new Request('https://cache.local/geocode4?q=' + encodeURIComponent(q));
-  const hit = await cache.match(cacheKey);
-  if (hit) return hit;
+// 呼叫 TDX 並解析 JSON（token 失效、429、5xx 會自動重試一次）
+async function tdxJson(env, url) {
+  const call = async () => fetch(url, {
+    headers: { authorization: `Bearer ${await getToken(env)}`, 'accept-encoding': 'gzip' },
+  });
+  let res = await call();
+  if (res.status === 401) {
+    tokenCache = { token: null, exp: 0 };
+    if (env.TOKEN_KV) { try { await env.TOKEN_KV.delete('tdx_token'); } catch { /* 忽略 */ } }
+    res = await call();
+  } else if (res.status === 429 || res.status >= 500) {
+    await sleep(700);
+    res = await call();
+  }
+  if (!res.ok) return { ok: false, status: res.status };
+  try { return { ok: true, status: 200, data: await res.json() }; } catch { return { ok: false, status: 0 }; }
+}
 
+// 從 WKT（"POINT (121.5 25.0)"）或 GeoJSON 幾何取出經緯度
+function parsePoint(g) {
+  if (!g) return null;
+  if (typeof g === 'string') {
+    const m = g.match(/POINT\s*\(\s*(-?[\d.]+)\s+(-?[\d.]+)\s*\)/i);
+    if (m) return { lon: Number(m[1]), lat: Number(m[2]) };
+    if (g.trim().startsWith('{')) { try { return parsePoint(JSON.parse(g)); } catch { return null; } }
+    return null;
+  }
+  const c = g.coordinates;
+  if (Array.isArray(c) && c.length >= 2 && Number.isFinite(Number(c[0])) && Number.isFinite(Number(c[1]))) {
+    return { lon: Number(c[0]), lat: Number(c[1]) };
+  }
+  return null;
+}
+
+// 把 TDX 回應（陣列或 GeoJSON FeatureCollection）整理成 [{name,label,lat,lon}]
+function tdxItems(data, q) {
+  let rows = [];
+  if (Array.isArray(data)) rows = data;
+  else if (data && Array.isArray(data.features)) rows = data.features.map((f) => ({ ...(f.properties || {}), Geometry: f.geometry }));
+  const out = [];
+  for (const r of rows) {
+    const pt = parsePoint(r.Geometry);
+    const label = String(r.Address || r.Markname || '').trim();
+    if (!pt || !label) continue;
+    if (!(pt.lat > 20 && pt.lat < 27 && pt.lon > 117 && pt.lon < 124)) continue;
+    out.push({ name: r.Markname ? label : q, label, lat: pt.lat, lon: pt.lon });
+  }
+  return out.slice(0, 6);
+}
+
+// TDX 地理編碼：依文字像地址或地標決定先查哪一種
+async function tdxGeocode(env, q) {
+  const addressLike = /[路街巷弄段]|[0-9０-９]\s*號/.test(q);
+  const hasCity = /^(?:[臺台]北市|新北市|基隆市|桃園市|新竹[縣市]|苗栗縣|[臺台]中市|彰化縣|南投縣|雲林縣|嘉義[縣市]|[臺台]南市|高雄市|屏東縣|宜蘭縣|花蓮縣|[臺台]東縣|澎湖縣|金門縣|連江縣)/.test(q);
+  const addrTexts = [q];
+  if (!hasCity) addrTexts.push('新北市' + q, '台北市' + q);
+  const jobs = addressLike
+    ? [...addrTexts.map((t) => ['Address', t]), ['Markname', q]]
+    : [['Markname', q], ['Address', q]];
+  let lastStatus = 0;
+  for (const [kind, text] of jobs) {
+    const url = `${TDX_ADV}/V3/Map/GeoCode/Coordinate/${kind}/${encodeURIComponent(text)}?%24format=JSON`;
+    const r = await tdxJson(env, url);
+    lastStatus = r.status;
+    if (r.ok) {
+      const items = tdxItems(r.data, q);
+      if (items.length) return { items, status: 200 };
+    }
+    if (r.status === 401 || r.status === 403) break; // 沒有權限，繼續試也沒用
+  }
+  return { items: [], status: lastStatus };
+}
+
+// OpenStreetMap 備援：逐步放寬（原文 → 去門牌號 → 去弄 → 去巷），並在縣市區後補空格
+async function osmGeocode(q) {
   const search = async (text) => {
     const api = 'https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=tw&limit=6&accept-language=zh-TW'
       + '&viewbox=' + GEO_VIEWBOX + '&q=' + encodeURIComponent(text);
@@ -273,9 +341,6 @@ async function geocodeGet(ctx, url) {
       lat: Number(x.lat), lon: Number(x.lon),
     })).filter((x) => x.name && Number.isFinite(x.lat) && Number.isFinite(x.lon));
   };
-
-  // 逐步放寬：原文 → 去門牌號 → 去弄 → 去巷（只剩路名）。
-  // 另外把「縣市／區」與路名之間補上空格（Nominatim 不會自己切開中文，「板橋區金門街」會被當成一個詞而查不到）。
   const spaced = (t) => {
     const m = t.match(/^(\S{2,3}[縣市])?(\S{1,3}[區鄉鎮])?(.*)$/);
     return m ? [m[1], m[2], m[3]].filter(Boolean).join(' ').trim() : t;
@@ -288,28 +353,61 @@ async function geocodeGet(ctx, url) {
     const v = spaced(t);
     if (v && !attempts.includes(v)) attempts.push(v);
   }
-
   let list = [];
+  for (let i = 0; i < attempts.length; i++) {
+    if (i > 0) await sleep(1100); // Nominatim 限制每秒 1 次
+    list = await search(attempts[i]);
+    if (list.length) break;
+  }
+  return list;
+}
+
+async function geocodeGet(env, ctx, url) {
+  const q = (url.searchParams.get('q') || '').trim();
+  if (q.length < 1 || q.length > 60 || /[\u0000-\u001F\u007F]/.test(q)) return json({ error: '搜尋文字格式錯誤' }, 400);
+  const cache = caches.default;
+  const cacheKey = new Request('https://cache.local/geocode5?q=' + encodeURIComponent(q));
+  const hit = await cache.match(cacheKey);
+  if (hit) return hit;
+
+  const ok = (list, source) => {
+    const res = new Response(JSON.stringify(list), {
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'public, max-age=86400',
+        'x-geocoder': source,
+      },
+    });
+    ctx.waitUntil(cache.put(cacheKey, res.clone()));
+    return res;
+  };
+
+  // 1) TDX
+  let tdxStatus = 0;
   try {
-    for (let i = 0; i < attempts.length; i++) {
-      if (i > 0) await sleep(1100); // Nominatim 限制每秒 1 次
-      list = await search(attempts[i]);
-      if (list.length) break;
-    }
+    const t = await tdxGeocode(env, q);
+    tdxStatus = t.status;
+    if (t.items.length) return ok(t.items, 'tdx');
   } catch (err) {
-    return json({ error: '地名搜尋失敗', detail: String(err.message || err) }, 502);
+    tdxStatus = -1; // 例如取 token 失敗：直接退回 OSM
   }
 
-  if (!list.length) {
-    return new Response('[]', {
-      headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
-    });
+  // 2) OSM 備援
+  try {
+    const list = await osmGeocode(q);
+    if (list.length) return ok(list, 'osm');
+  } catch (err) {
+    return json({ error: '地名搜尋失敗', tdxStatus, detail: String(err.message || err) }, 502);
   }
-  const res = new Response(JSON.stringify(list), {
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=86400' },
+
+  return new Response('[]', {
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-geocoder': 'none',
+      'x-tdx-status': String(tdxStatus),
+    },
   });
-  ctx.waitUntil(cache.put(cacheKey, res.clone()));
-  return res;
 }
 
 function json(obj, status = 200) {
@@ -348,7 +446,7 @@ async function route(env, ctx, url) {
 
     // 路線規劃與地名搜尋：/api/plan?olat=&olon=&dlat=&dlon=、/api/geocode?q=
     if (p === '/api/plan') return await planGet(env, ctx, url);
-    if (p === '/api/geocode') return await geocodeGet(ctx, url);
+    if (p === '/api/geocode') return await geocodeGet(env, ctx, url);
 
     // ---------- 公車（預設高雄 Kaohsiung）----------
     if (p.startsWith('/api/bus/')) {
