@@ -282,6 +282,10 @@
     const rows = [];
     const freqs = [];
     const today = DAY_KEYS[new Date().getDay()];
+    // Basic Schedule 使用 ArrivalTime / DepartureTime；Premium v3 使用 HistoricalEstArrivalTime。
+    const stopTime = (s) => (
+      s && (s.DepartureTime || s.ArrivalTime || s.HistoricalEstArrivalTime || s.EstimatedArrivalTime) || ''
+    ).slice(0, 5);
     for (const group of pickArray(data)) {
       const direction = group.Direction;
       const timetables = group.Timetables || group.Trips || [];
@@ -289,7 +293,7 @@
         const stops = trip.StopTimes || trip.Stops || [];
         const first = stops.find((s) => Number(s.StopSequence) === 1) || stops[0];
         const last = stops[stops.length - 1];
-        const dep = (first && (first.DepartureTime || first.ArrivalTime) || '').slice(0, 5);
+        const dep = stopTime(first);
         if (!dep) continue;
         rows.push({
           direction,
@@ -297,11 +301,11 @@
           label: group.SubRouteName && group.SubRouteName.Zh_tw,
           service: trip.ServiceDay || group.ServiceDay || null,
           dep,
-          end: (last && (last.ArrivalTime || last.DepartureTime) || '').slice(0, 5),
+          end: stopTime(last),
           stopTimes: stops.map((s) => ({
-            uid: s.StopUID || '',
+            uid: s.StopUID || s.StopID || '',
             seq: Number(s.StopSequence),
-            time: (s.DepartureTime || s.ArrivalTime || '').slice(0, 5),
+            time: stopTime(s),
           })).filter((s) => s.time),
         });
       }
@@ -743,7 +747,22 @@
         const schedule = cur.scheduleData || (await api(apiQ('schedule', route), 60000));
         if (stale()) return;
         if (pickArray(schedule).length) cur.scheduleData = schedule;
-        const parsed = parseSchedule(schedule);
+        let parsed = parseSchedule(schedule);
+
+        // Basic Schedule 常沒有完整逐站資料；改用 TDX Premium v3 歷史推估站站班表補足。
+        if (!parsed.length && !(parsed.freqs || []).length) {
+          const premium = await api(apiQ('schedule-premium', route), 60000).catch(() => []);
+          if (stale()) return;
+          const premiumParsed = parseSchedule(premium);
+          if (premiumParsed.length || (premiumParsed.freqs || []).length) {
+            parsed = premiumParsed;
+            parsed._source = 'premium';
+            renderTimetable(parsed);
+            $('busScheduleStatus').textContent += '（TDX 推估）';
+            return;
+          }
+        }
+
         if (!parsed.length && !(parsed.freqs || []).length && CITY === 'Kaohsiung') {
           const local = await loadLocalSchedule();
           if (stale()) return;

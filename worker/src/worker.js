@@ -3,6 +3,7 @@
 // 需要的機密變數（用 wrangler secret put 設定）：TDX_ID、TDX_SECRET
 
 const TDX_BASE = 'https://tdx.transportdata.tw/api/basic';
+const TDX_PREMIUM_BASE = 'https://tdx.transportdata.tw/api/premium';
 const TOKEN_URL =
   'https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token';
 
@@ -75,7 +76,7 @@ async function getToken(env) {
 // 呼叫 TDX 並用 Cache API 快取結果，減少 API 次數（TDX 有呼叫額度限制）
 // query：額外的 OData 參數（例如 %24select=...），用來縮小回傳資料量
 // skipEmpty：回傳空陣列 [] 時不快取（避免 TDX 之後補上資料還拿到舊的空結果）
-async function tdxGet(env, ctx, path, ttl, query = '', skipEmpty = false) {
+async function tdxGet(env, ctx, path, ttl, query = '', skipEmpty = false, base = TDX_BASE) {
   const cache = caches.default;
   const cacheKey = new Request('https://cache.local' + path + '?' + query);
   const staleKey = new Request('https://cache.local/stale' + path + '?' + query);
@@ -83,7 +84,7 @@ async function tdxGet(env, ctx, path, ttl, query = '', skipEmpty = false) {
   const hit = await cache.match(cacheKey);
   if (hit) return hit;
 
-  const url = `${TDX_BASE}${path}?%24format=JSON${query ? '&' + query : ''}`;
+  const url = `${base}${path}?%24format=JSON${query ? '&' + query : ''}`;
   const call = async () => fetch(url, {
     headers: { authorization: `Bearer ${await getToken(env)}`, 'accept-encoding': 'gzip' },
   });
@@ -187,6 +188,19 @@ async function scheduleGet(env, ctx, city, route, name) {
     })());
   }
   return upstream;
+}
+
+// TDX Premium：歷史推估站站班表（與 basic Schedule 的資料結構不同）
+// Premium 資料不寫入基本班表的 D1，避免兩種格式互相污染；由 Cloudflare Cache 快取一天。
+async function premiumScheduleGet(env, ctx, city, name) {
+  return await tdxGet(
+    env, ctx,
+    `/V3/Map/Estimation/Bus/Schedule/City/${city}/RouteName/${name}`,
+    86400,
+    '',
+    true,
+    TDX_PREMIUM_BASE
+  );
 }
 
 // ---------- 路線規劃（TDX 運具整合路徑規劃）----------
@@ -503,6 +517,11 @@ async function route(env, ctx, url) {
       // 路線預定時刻：用於站站時刻表（快取一天）
       if (p === '/api/bus/schedule') {
         return await scheduleGet(env, ctx, city, route, name);
+      }
+
+      // TDX Premium v3 歷史推估站站班表：basic Schedule 沒有資料時使用
+      if (p === '/api/bus/schedule-premium') {
+        return await premiumScheduleGet(env, ctx, city, name);
       }
 
       // 即時到站時間：/api/bus/eta?city=Kaohsiung&route=紅9（資料很即時，只快取 15 秒）
