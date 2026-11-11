@@ -268,6 +268,8 @@ async function planGet(env, ctx, url) {
 const TDX_ADV = 'https://tdx.transportdata.tw/api/advanced';
 const GEO_VIEWBOX = '121.3,25.3,122.0,24.65'; // OSM 備援：左經度,上緯度,右經度,下緯度（優先台北市、新北市）
 const GEO_UA = 'yayu-transit-planner (personal PWA; github.com/dmppmd132-glitch/traffic)';
+// TDX 地理編碼被限流後，這個 isolate 暫停使用 TDX 一分鐘，直接走 OSM 備援。
+let tdxGeoBackoffUntil = 0;
 
 // 呼叫 TDX 並解析 JSON（token 失效、429、5xx 會自動重試一次）
 async function tdxJson(env, url) {
@@ -279,7 +281,7 @@ async function tdxJson(env, url) {
     tokenCache = { token: null, exp: 0 };
     if (env.TOKEN_KV) { try { await env.TOKEN_KV.delete('tdx_token'); } catch { /* 忽略 */ } }
     res = await call();
-  } else if (res.status === 429 || res.status >= 500) {
+  } else if (res.status >= 500) {
     await sleep(700);
     res = await call();
   }
@@ -321,6 +323,7 @@ function tdxItems(data, q) {
 
 // TDX 地理編碼：依文字像地址或地標決定先查哪一種
 async function tdxGeocode(env, q) {
+  if (Date.now() < tdxGeoBackoffUntil) return { items: [], status: 429 };
   const addressLike = /[路街巷弄段]|[0-9０-９]\s*號/.test(q);
   const hasCity = /^(?:[臺台]北市|新北市|基隆市|桃園市|新竹[縣市]|苗栗縣|[臺台]中市|彰化縣|南投縣|雲林縣|嘉義[縣市]|[臺台]南市|高雄市|屏東縣|宜蘭縣|花蓮縣|[臺台]東縣|澎湖縣|金門縣|連江縣)/.test(q);
   const addrTexts = [q];
@@ -333,6 +336,10 @@ async function tdxGeocode(env, q) {
     const url = `${TDX_ADV}/V3/Map/GeoCode/Coordinate/${kind}/${encodeURIComponent(text)}?%24format=JSON`;
     const r = await tdxJson(env, url);
     lastStatus = r.status;
+    if (r.status === 429) {
+      tdxGeoBackoffUntil = Date.now() + 60000;
+      break;
+    }
     if (r.ok) {
       const items = tdxItems(r.data, q);
       if (items.length) return { items, status: 200 };

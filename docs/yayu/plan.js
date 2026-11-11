@@ -255,7 +255,8 @@
           if (my !== seq) return;
           show(list, list.length ? '' : '找不到這個地點，試試加上縣市或更完整的名稱');
         } catch (err) { if (my === seq) show([], '地名搜尋失敗：' + err.message); }
-      }, 450);
+      // 地址輸入完成後再查詢，避免逐字輸入連續打到 TDX 造成 429 限流。
+      }, 900);
     });
     el.addEventListener('blur', () => { pop.hidden = true; });
     el.addEventListener('focus', () => { if (!getPlace() && el.value.trim().length >= 2) el.dispatchEvent(new Event('input')); });
