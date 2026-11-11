@@ -117,7 +117,26 @@
     return scored.slice(0, 12).map((x) => x[1]);
   }
 
+  // 有輸入內容才顯示清除按鈕
+  function syncClearBtn() {
+    $('busClearInput').hidden = !$('busInput').value;
+  }
+
+  // 清除輸入與目前路線畫面，方便查詢下一筆
+  function clearBusSearch() {
+    openSeq++;           // 取消還在載入中的路線
+    cur = null;          // 停止到站與車輛的定時更新
+    $('busInput').value = '';
+    $('busSuggest').replaceChildren();
+    $('busRoute').hidden = true;
+    if (!ttSheet.hidden) closeTimetable();
+    setMsg('');
+    syncClearBtn();
+    $('busInput').focus();
+  }
+
   function renderSuggest() {
+    syncClearBtn();
     const list = matchRoutes($('busInput').value);
     $('busSuggest').replaceChildren(
       ...list.map((r) => {
@@ -888,6 +907,7 @@
   async function openRoute(name, opts = {}) {
     const seq = ++openSeq;
     $('busInput').value = name;
+    syncClearBtn();
     $('busSuggest').replaceChildren();
     setMsg('載入中…', true);
     $('busRoute').hidden = true;
@@ -1070,6 +1090,7 @@
   });
 
   $('busInput').addEventListener('input', renderSuggest);
+  $('busClearInput').addEventListener('click', clearBusSearch);
   $('busInput').addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     const list = matchRoutes($('busInput').value);

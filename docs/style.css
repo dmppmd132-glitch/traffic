@@ -126,6 +126,10 @@ button.link { border: 0; background: none; padding: 0 0 0 8px; color: var(--bran
 
 /* ---------- 公車 ---------- */
 .suggest { margin-top: 10px; }
+/* 輸入框右側的清除按鈕 */
+.input-clear { display: flex; gap: 8px; align-items: center; }
+.input-clear input { flex: 1; min-width: 0; }
+.clear-btn { flex: none; padding: 8px 12px; border: 1px solid var(--line, #ccc); border-radius: 8px; background: none; color: var(--brand); font-size: 14px; white-space: nowrap; }
 .chip.on { background: var(--brand); color: var(--brand-text); border-color: var(--brand); }
 .card .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .card .head h2 { margin: 0; font-size: 20px; color: var(--text); }

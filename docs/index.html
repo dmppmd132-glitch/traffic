@@ -75,7 +75,10 @@
     <section class="card" id="busSearchCard">
       <label>
         <span>路線</span>
-        <input id="busInput" placeholder="輸入路線，例如 紅9、99、橘10" autocomplete="off" inputmode="search" enterkeyhint="search">
+        <div class="input-clear">
+          <input id="busInput" placeholder="輸入路線，例如 紅9、99、橘10" autocomplete="off" inputmode="search" enterkeyhint="search">
+          <button id="busClearInput" type="button" class="clear-btn" aria-label="清除輸入" hidden>✕ 清除</button>
+        </div>
       </label>
       <div id="busSuggest" class="chips suggest"></div>
       <p id="busMsg" class="msg" role="status"></p>
