@@ -55,3 +55,8 @@
 :root[data-theme] .card { border-radius: 18px; }
 :root[data-theme] .chip, :root[data-theme] button.primary { border-radius: 999px; }
 :root[data-theme] .city-tabs { margin-bottom: 10px; }
+
+/* 標頭的小圖示（有放 logo 的版本不再顯示 emoji） */
+:root[data-theme] .top h1.has-logo { display: flex; align-items: center; gap: 8px; }
+:root[data-theme] .top h1.has-logo::before { content: none; }
+.top .logo { border-radius: 9px; background: #fff; }

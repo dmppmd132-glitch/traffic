@@ -83,7 +83,7 @@ TDX_SECRET=xxx
 | Yayu 版 | `/traffic/yayu/` | 台鐵 + 台北／新北公車 + 台北捷運、新北捷運、淡海輕軌、安坑輕軌，小豬主題 |
 
 - 設定在 `docs/yayu/profile.js`：縣市（`cities`）、捷運營運商（`metroOps`，TDX 代碼）、主題（`theme`：`pig` 小豬或 `bunny` 兔子）、地圖公車圖示（`busEmoji`）。
-- 換成兔子：把 `theme` 改成 `'bunny'`、`busEmoji` 改 `'🐰'`，。主畫面圖示目前是使用者提供的「PIG BUS」插畫（`yayu/icon-*.png`、`apple-touch-icon.png`）；要換成兔子，改 `yayu/manifest.webmanifest` 與 `yayu/index.html` 的圖示檔名即可（兔子圖示備用檔為 `icon-bunny-192.png`、`icon-bunny-512.png`，原稿 `icon-bunny.svg`）。
+- 換成兔子：把 `theme` 改成 `'bunny'`、`busEmoji` 改 `'🐰'`，。App 名稱為「yayu 豬豬轉運站」，主畫面圖示與標頭小圖是使用者提供的插畫（小豬站長）（`yayu/icon-*.png`、`apple-touch-icon.png`）；要換成兔子，改 `yayu/manifest.webmanifest` 與 `yayu/index.html` 的圖示檔名即可（兔子圖示備用檔為 `icon-bunny-192.png`、`icon-bunny-512.png`，原稿 `icon-bunny.svg`）。
 - 主題樣式在 `docs/themes.css`，一般版沒有 `data-theme`，不受影響。
 - 各版的 localStorage 用前綴分開（Yayu 為 `yayu.`），常用路線不會互相混在一起；公車的路線、常用、最近查詢再依縣市分開。
 - 新增另一個人的版本：複製 `docs/yayu/` 資料夾、改 `profile.js`、改 `index.html` 的標題與捷運按鈕，並把新檔案加進 `docs/sw.js` 的 `SHELL_FILES`。
