@@ -193,9 +193,9 @@ async function scheduleGet(env, ctx, city, route, name) {
 // 網址可用環境變數 PLAN_URL 覆寫（TDX 若調整版本，不用改程式）
 // TDX MaaS「公共運輸旅運規劃功能模組」：https://tdx.transportdata.tw/api/maas/routing
 const PLAN_URL_DEFAULT = 'https://tdx.transportdata.tw/api/maas/routing';
-
-// 記住上一次成功的運具代碼組合（只存在記憶體，Worker 重啟後會重新嘗試）
-let planTransitOk = '';
+// TDX 規定 gc 與 transit 為必填。transit 的預設值取自他人實測（運具代碼），
+// 若要調整運具，可用環境變數 PLAN_TRANSIT 覆寫（例如 "1,2,3,4,5,6,7"），不用改程式
+const PLAN_TRANSIT_DEFAULT = '3,4,5,6,7';
 
 async function planGet(env, ctx, url) {
   const num = (k) => { const v = url.searchParams.get(k); return v !== null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null; };
@@ -214,6 +214,7 @@ async function planGet(env, ctx, url) {
   if (hit) return hit;
 
   const base = env.PLAN_URL || PLAN_URL_DEFAULT;
+  const transit = encodeURIComponent((env.PLAN_TRANSIT || PLAN_TRANSIT_DEFAULT).trim());
   // 出發時間：台北時間「現在 + 5 分鐘」進位到整分（TDX 不接受「現在」或過去的時間），格式 YYYY-MM-DDTHH:mm:ss
   const t = new Date(Math.ceil((Date.now() + 5 * 60000) / 60000) * 60000 + 8 * 3600000);
   const p2 = (n) => String(n).padStart(2, '0');
@@ -222,23 +223,16 @@ async function planGet(env, ctx, url) {
   const call = async (extra) => fetch(`${base}?${od}${extra}`, {
     headers: { authorization: `Bearer ${await getToken(env)}`, 'accept-encoding': 'gzip' },
   });
-  // transit（運具代碼）與 gc 為 TDX 必填。代碼對照尚未能從官方文件確認，所以依序嘗試幾組，
-  // 成功的那組會記在記憶體中，之後直接使用；也可用 Worker 環境變數 PLAN_TRANSIT 固定指定（例如 1,2,3,4,5,6,7）
-  const common = `&gc=1&top=5&first_mile_mode=0&last_mile_mode=0&depart=${depart}`;
-  const transitSets = env.PLAN_TRANSIT ? [env.PLAN_TRANSIT] : [planTransitOk, '1,2,3,4,5,6,7,8,9', '1,2,3,4,5,6,7', '3,4,5,6,7'].filter((v, i, arr) => v && arr.indexOf(v) === i);
-  let upstream = null;
-  const errors = [];
-  for (const set of transitSets) {
-    upstream = await call(`${common}&transit=${set}`);
-    if (upstream.status === 429 || upstream.status >= 500) { await sleep(700); upstream = await call(`${common}&transit=${set}`); }
-    if (upstream.ok) { planTransitOk = set; break; }
-    // 參數問題（400 / 404 / 422）才換下一組；其他錯誤（401、5xx）換了也沒用
-    let msg = '';
-    try { msg = (await upstream.clone().text()).slice(0, 160); } catch { /* 忽略 */ }
-    errors.push(`transit=${set} → ${upstream.status} ${msg}`);
-    if (![400, 404, 422].includes(upstream.status)) break;
+  // 必填：gc、transit。先用完整參數；被拒絕（400 / 404 / 422）就改用精簡參數（仍保留必填項）再試，並保留第一次的錯誤方便排查
+  const full = `&gc=1&top=5&transit=${transit}&first_mile_mode=0&last_mile_mode=0&depart=${depart}`;
+  const lean = `&gc=1&transit=${transit}&depart=${depart}`;
+  let upstream = await call(full);
+  let firstErr = '';
+  if (upstream.status === 400 || upstream.status === 404 || upstream.status === 422) {
+    try { firstErr = (await upstream.text()).slice(0, 200); } catch { /* 忽略 */ }
+    upstream = await call(lean);
   }
-  const firstErr = errors.join(' || ');
+  if (upstream.status === 429 || upstream.status >= 500) { await sleep(700); upstream = await call(lean); }
   if (!upstream.ok) {
     let detail = '';
     try { detail = (await upstream.text()).slice(0, 300); } catch { /* 忽略 */ }
