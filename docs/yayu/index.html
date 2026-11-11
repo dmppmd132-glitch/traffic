@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Yayu 的交通</title>
+  <meta name="theme-color" content="#e8628d">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="../themes.css">
+  <script src="profile.js"></script>
+</head>
+<body>
+  <header class="top">
+    <h1>Yayu 的交通</h1>
+    <span id="netStatus" class="net" hidden>離線</span>
+  </header>
+
+  <nav class="tabs" aria-label="交通工具">
+    <button type="button" data-tab="rail" class="on">台鐵</button>
+    <button type="button" data-tab="bus">公車</button>
+    <button type="button" data-tab="metro">捷運輕軌</button>
+  </nav>
+
+  <main id="railView">
+    <section class="card" id="searchCard">
+      <div class="route">
+        <label>
+          <span>出發</span>
+          <input id="fromInput" list="stationList" placeholder="輸入車站" autocomplete="off" inputmode="text">
+        </label>
+        <button id="swapBtn" type="button" aria-label="對調起訖站">⇅</button>
+        <label>
+          <span>抵達</span>
+          <input id="toInput" list="stationList" placeholder="輸入車站" autocomplete="off" inputmode="text">
+        </label>
+      </div>
+
+      <div class="when">
+        <label>
+          <span>日期</span>
+          <input id="dateInput" type="date">
+        </label>
+        <label>
+          <span>時間</span>
+          <input id="timeInput" type="time">
+        </label>
+        <button id="nowBtn" type="button">現在</button>
+      </div>
+
+      <div class="actions">
+        <button id="searchBtn" type="button" class="primary">查詢</button>
+        <button id="favBtn" type="button" aria-pressed="false" title="加入常用路線">☆ 常用</button>
+      </div>
+      <p id="msg" class="msg" role="status"></p>
+    </section>
+
+    <section class="card" id="quickCard" hidden>
+      <div id="favBlock" hidden>
+        <h2>常用路線</h2>
+        <div id="favList" class="chips"></div>
+      </div>
+      <div id="histBlock" hidden>
+        <h2>最近查詢 <button id="clearHist" type="button" class="link">清除</button></h2>
+        <div id="histList" class="chips"></div>
+      </div>
+    </section>
+
+    <section id="results" aria-live="polite"></section>
+  </main>
+
+  <main id="busView" hidden>
+    <section class="card" id="busSearchCard">
+      <div id="busCities" class="chips city-tabs" hidden></div>
+      <label>
+        <span>路線</span>
+        <div class="input-clear">
+          <input id="busInput" placeholder="輸入路線，例如 307、655、藍1" autocomplete="off" inputmode="search" enterkeyhint="search">
+          <button id="busClearInput" type="button" class="clear-btn" aria-label="清除輸入" hidden>✕ 清除</button>
+        </div>
+      </label>
+      <div id="busSuggest" class="chips suggest"></div>
+      <p id="busMsg" class="msg" role="status"></p>
+    </section>
+
+    <section class="card" id="busQuick" hidden>
+      <div id="busFavStopBlock" hidden>
+        <h2>常用站牌</h2>
+        <div id="busFavStops"></div>
+      </div>
+      <div id="busFavRouteBlock" hidden>
+        <h2>常用路線</h2>
+        <div id="busFavRoutes" class="chips"></div>
+      </div>
+      <div id="busHistBlock" hidden>
+        <h2>最近查詢 <button id="busClearHist" type="button" class="link">清除</button></h2>
+        <div id="busHist" class="chips"></div>
+      </div>
+    </section>
+
+    <section id="busRoute" hidden>
+      <div class="card">
+        <div class="head">
+          <h2 id="busRouteTitle"></h2>
+          <div class="head-actions">
+            <button id="busTimetableBtn" type="button" class="outline">🕒 站站時刻</button>
+            <button id="busFavRouteBtn" type="button" aria-pressed="false">☆ 常用</button>
+          </div>
+        </div>
+        <div id="busDirTabs" class="chips"></div>
+        <p id="busUpdated" class="msg info"></p>
+      </div>
+      <section class="card bus-map-card">
+        <div class="map-head">
+          <h2>路線動態</h2>
+          <span id="busMapStatus" class="map-status">載入地圖中…</span>
+          <button id="busLocate" type="button" class="link" aria-label="定位我的位置">◎ 我的位置</button>
+        </div>
+        <div id="busMap" class="bus-map" aria-label="公車路線地圖"></div>
+        <p class="map-note">點站牌可看站名與到站時間；公車圖示下方為車號；公車位置每 20 秒更新。</p>
+      </section>
+      <div id="busTimetableSheet" class="sheet" hidden>
+        <section class="card sheet-card" id="busTimetableCard" role="dialog" aria-modal="true" aria-labelledby="busTimetableTitle">
+          <div class="map-head">
+            <h2 id="busTimetableTitle">站站時刻表</h2>
+            <span id="busScheduleStatus" class="map-status">載入中…</span>
+            <button id="busTimetableClose" type="button" class="link" aria-label="關閉">✕ 關閉</button>
+          </div>
+          <div id="busTimetable" class="bus-timetable"></div>
+        </section>
+      </div>
+      <div id="busStops"></div>
+    </section>
+  </main>
+
+  <main id="metroView" hidden>
+    <section class="card" id="metroSearchCard">
+      <div id="metroOps" class="chips">
+        <button type="button" class="chip on" data-op="TRTC">台北捷運</button>
+        <button type="button" class="chip" data-op="NTMC">新北捷運</button>
+        <button type="button" class="chip" data-op="NTDLRT">淡海輕軌</button>
+        <button type="button" class="chip" data-op="NTALRT">安坑輕軌</button>
+      </div>
+      <div id="metroLines" class="chips suggest"></div>
+      <label class="metro-search">
+        <span>車站</span>
+        <input id="metroInput" placeholder="輸入車站名稱，例如 台北車站" autocomplete="off" inputmode="search" enterkeyhint="search">
+      </label>
+      <div id="metroSuggest" class="chips suggest"></div>
+      <p id="metroMsg" class="msg" role="status"></p>
+    </section>
+
+    <section class="card" id="metroFavCard" hidden>
+      <h2>常用車站</h2>
+      <div id="metroFavs" class="chips"></div>
+    </section>
+
+    <section class="card" id="metroBoardCard" hidden>
+      <div class="head">
+        <h2 id="metroStationTitle"></h2>
+        <button id="metroFavBtn" type="button" aria-pressed="false">☆ 常用</button>
+      </div>
+      <p id="metroUpdated" class="msg info"></p>
+      <div id="metroBoard"></div>
+    </section>
+  </main>
+
+  <datalist id="stationList"></datalist>
+  <script src="../config.js"></script>
+  <script src="../app.js"></script>
+  <script src="../bus.js"></script>
+  <script src="../metro.js"></script>
+</body>
+</html>

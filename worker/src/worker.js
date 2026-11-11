@@ -289,10 +289,11 @@ async function route(env, ctx, url) {
       }
     }
 
-    // ---------- 高雄捷運 / 輕軌（KRTC = 高雄捷運，KLRT = 高雄輕軌）----------
+    // ---------- 捷運 / 輕軌 ----------
+    // KRTC 高雄捷運、KLRT 高雄輕軌、TRTC 臺北捷運、NTMC 新北捷運（環狀線）、NTDLRT 淡海輕軌、NTALRT 安坑輕軌
     if (p.startsWith('/api/metro/')) {
       const op = url.searchParams.get('op') || 'KRTC';
-      if (!/^(KRTC|KLRT)$/.test(op)) return json({ error: '營運商參數錯誤' }, 400);
+      if (!/^(KRTC|KLRT|TRTC|NTMC|NTDLRT|NTALRT)$/.test(op)) return json({ error: '營運商參數錯誤' }, 400);
 
       // 各路線與車站（一天快取）：/api/metro/stations?op=KRTC
       if (p === '/api/metro/stations') {

@@ -7,28 +7,45 @@
   const $ = (id) => document.getElementById(id);
   const pad = (n) => String(n).padStart(2, '0');
 
+  // 個人版（如 yayu）：同網域下各版本的 localStorage 用前綴分開，一般版維持原本的鍵名
+  const PROFILE = window.TRA_PROFILE || {};
+  const PFX = PROFILE.prefix || '';
+
   // localStorage 安全讀寫（私密模式可能丟例外）
   const store = {
     get(key, fallback) {
       try {
-        const v = localStorage.getItem(key);
+        const v = localStorage.getItem(PFX + key);
         return v ? JSON.parse(v) : fallback;
       } catch { return fallback; }
     },
     set(key, val) {
-      try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* 忽略 */ }
+      try { localStorage.setItem(PFX + key, JSON.stringify(val)); } catch { /* 忽略 */ }
     },
   };
 
-  const CITY = window.TRA_BUS_CITY || 'Kaohsiung'; // 之後要支援其他縣市，改這裡或 config.js
+  // 縣市：一般版固定高雄；個人版可在 profile 設定多個縣市並在畫面上切換
+  const CITIES = Array.isArray(PROFILE.cities) && PROFILE.cities.length ? PROFILE.cities : null;
+  const DEFAULT_CENTER = [22.63, 120.3]; // 高雄市區
+  let CITY = (CITIES && CITIES[0].id) || window.TRA_BUS_CITY || 'Kaohsiung';
+  if (CITIES) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PFX + 'tra.bus.city') || 'null');
+      if (CITIES.some((c) => c.id === saved)) CITY = saved;
+    } catch { /* 忽略 */ }
+  }
+  const cityCenter = () => ((CITIES || []).find((c) => c.id === CITY) || {}).center || DEFAULT_CENTER;
+  // 多縣市時，路線、常用、最近查詢依縣市分開記憶
+  const ck = (base) => (CITIES ? `${base}.${CITY}` : base);
   const KEY = {
     tab: 'tra.tab',              // 上次使用的分頁
-    routes: 'tra.bus.routes',    // 路線清單快取 {t, list}
-    last: 'tra.bus.last',        // 上次查看的路線 {route, dir, sub}
-    favRoutes: 'tra.bus.favRoutes', // 常用路線 [路線名稱]
-    favStops: 'tra.bus.favStops',   // 常用站牌 [{route, dir, sub, uid, name, label}]
-    hist: 'tra.bus.history',     // 最近查詢 [路線名稱]
+    get routes() { return ck('tra.bus.routes'); },       // 路線清單快取 {t, list}
+    get last() { return ck('tra.bus.last'); },           // 上次查看的路線 {route, dir, sub}
+    get favRoutes() { return ck('tra.bus.favRoutes'); }, // 常用路線 [路線名稱]
+    get favStops() { return ck('tra.bus.favStops'); },   // 常用站牌 [{route, dir, sub, uid, name, label}]
+    get hist() { return ck('tra.bus.history'); },        // 最近查詢 [路線名稱]
   };
+  const BUS_EMOJI = PROFILE.busEmoji || '🚌';
   const ROUTES_TTL = 7 * 24 * 3600 * 1000; // 路線清單快取 7 天
   const MAX_FAV_ROUTES = 10;
   const MAX_FAV_STOPS = 10;
@@ -553,7 +570,7 @@
     if (busMap) return;
     const box = $('busMap');
     box.replaceChildren(); // 清掉「載入中」之類的文字
-    busMap = L.map(box, { zoomControl: true }).setView([22.63, 120.3], 12); // 預設高雄市區
+    busMap = L.map(box, { zoomControl: true }).setView(cityCenter(), 12);
     setTiles();
     routeLayer = L.layerGroup().addTo(busMap);
     busLayer = L.layerGroup().addTo(busMap);
@@ -568,7 +585,7 @@
     const list = parsePositions(posData, entry);
     for (const b of list) {
       const bad = BUS_STATUS[b.status] && b.status !== 100;
-      const html = `<div class="bm${bad ? ' warn' : ''}"><div class="bi">🚌</div><div class="bp"></div></div>`;
+      const html = `<div class="bm${bad ? ' warn' : ''}"><div class="bi">${BUS_EMOJI}</div><div class="bp"></div></div>`;
       const m = L.marker([b.lat, b.lon], { icon: divIcon(html, 'bm-icon'), zIndexOffset: 1000, keyboard: false }).addTo(busLayer);
       // 車號用 textContent 寫入，避免特殊字元造成問題
       const el = m.getElement && m.getElement();
@@ -727,7 +744,7 @@
         if (stale()) return;
         if (pickArray(schedule).length) cur.scheduleData = schedule;
         const parsed = parseSchedule(schedule);
-        if (!parsed.length && !(parsed.freqs || []).length) {
+        if (!parsed.length && !(parsed.freqs || []).length && CITY === 'Kaohsiung') {
           const local = await loadLocalSchedule();
           if (stale()) return;
           const info = findLocalSchedule(local, route);
@@ -1050,6 +1067,7 @@
   async function startBus() {
     if (started) return;
     started = true;
+    renderCities();
     renderQuick();
     renderFavStops();
     refreshFavEta();
@@ -1066,6 +1084,47 @@
     // 還原上次看的路線
     const last = store.get(KEY.last, null);
     if (last && routes.some((r) => r.name === last.route)) openRoute(last.route, last);
+  }
+
+  // ---------- 縣市切換（個人版多縣市才會有） ----------
+  function renderCities() {
+    const box = $('busCities');
+    if (!box || !CITIES) return;
+    box.hidden = false;
+    box.replaceChildren(...CITIES.map((c) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip' + (c.id === CITY ? ' on' : '');
+      b.textContent = c.name;
+      b.addEventListener('click', () => switchCity(c.id));
+      return b;
+    }));
+  }
+
+  async function switchCity(id) {
+    if (id === CITY) return;
+    CITY = id;
+    try { localStorage.setItem(PFX + 'tra.bus.city', JSON.stringify(id)); } catch { /* 忽略 */ }
+    openSeq++; cur = null; routes = []; favEtaMaps = new Map(); mapKey = '';
+    if (busMap) busMap.setView(cityCenter(), 12);
+    $('busInput').value = '';
+    $('busSuggest').replaceChildren();
+    $('busRoute').hidden = true;
+    if (!ttSheet.hidden) closeTimetable();
+    syncClearBtn();
+    renderCities();
+    renderQuick();
+    renderFavStops();
+    refreshFavEta();
+    setMsg('載入路線清單…', true);
+    try {
+      routes = await loadRoutes();
+      if (id !== CITY) return;
+      setMsg('');
+      renderSuggest();
+    } catch (err) {
+      if (id === CITY) setMsg('無法載入路線清單：' + err.message);
+    }
   }
 
   function setTab(tab) {

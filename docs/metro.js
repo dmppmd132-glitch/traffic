@@ -2,13 +2,16 @@
 (() => {
   'use strict';
 
+  // 個人版（如 yayu）：同網域下各版本的 localStorage 用前綴分開，一般版維持原本的鍵名
+  const PROFILE = window.TRA_PROFILE || {};
+  const PFX = PROFILE.prefix || '';
   const $ = (id) => document.getElementById(id);
   const norm = (s) => (s || '').trim().replace(/台/g, '臺');
   const store = {
     get(key, fallback) {
-      try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
+      try { const v = localStorage.getItem(PFX + key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
     },
-    set(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* 忽略 */ }
+    set(key, val) { try { localStorage.setItem(PFX + key, JSON.stringify(val)); } catch { /* 忽略 */ }
     },
   };
   const KEY = {
@@ -20,7 +23,9 @@
   const STATIONS_TTL = 7 * 24 * 3600 * 1000;
   const REFRESH_MS = 20000;
   const MAX_FAV = 10;
-  const OPS = { KRTC: '高雄捷運', KLRT: '高雄輕軌' };
+  // 營運商：一般版為高雄；個人版由 profile.metroOps 指定（TDX 代碼 → 顯示名稱）
+  const OPS = PROFILE.metroOps || { KRTC: '高雄捷運', KLRT: '高雄輕軌' };
+  const FIRST_OP = Object.keys(OPS)[0];
 
   async function api(path, ms = 15000) {
     const base = (window.TRA_API_BASE || '').replace(/\/$/, '');
@@ -46,8 +51,8 @@
   const nm = (o) => (o && (o.Zh_tw || o.En)) || (typeof o === 'string' ? o : '');
 
   // ---------- 狀態 ----------
-  let op = store.get(KEY.op, 'KRTC');
-  if (!OPS[op]) op = 'KRTC';
+  let op = store.get(KEY.op, FIRST_OP);
+  if (!OPS[op]) op = FIRST_OP;
   let lines = [];            // [{id, name, color, stations:[{id,name}]}]
   let activeLine = '';       // 目前顯示哪一條線的車站
   let cur = null;            // 目前選的車站 {op, id, name}
@@ -55,7 +60,10 @@
   let started = false;
   let loadSeq = 0;
 
+  // 各路線的官方代表色（以 LineID 比對）：臺北捷運 BL/R/G/O/BR、環狀線 Y
+  const LINE_COLORS = { BL: '#0070bd', R: '#e3002c', G: '#008659', O: '#f8b61c', BR: '#c48c31', Y: '#d4aa00' };
   const lineColor = (id, name) => {
+    if (LINE_COLORS[String(id || '').toUpperCase()] && PROFILE.metroOps) return LINE_COLORS[String(id).toUpperCase()];
     const s = `${id || ''}${name || ''}`;
     if (/^R|紅/.test(s)) return '#d9392b';
     if (/^O|橘/.test(s)) return '#f08a00';
@@ -79,7 +87,7 @@
       }).filter((l) => l.stations.length);
     }
     // 備援格式：單純的車站清單，依站號開頭字母分線（R 紅線、O 橘線、C 環狀輕軌）
-    const NAMES = { R: '紅線', O: '橘線', C: '環狀輕軌' };
+    const NAMES = { R: '紅線', O: '橘線', C: '環狀輕軌', BL: '板南線', G: '松山新店線', BR: '文湖線', Y: '環狀線', V: '淡海輕軌', K: '安坑輕軌' };
     const groups = new Map();
     for (const s of arr) {
       const id = s.StationID;
@@ -182,7 +190,7 @@
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'chip';
-      b.textContent = `${OPS[f.op] === '高雄輕軌' ? '輕軌' : '捷運'}・${f.name}`;
+      b.textContent = `${OPS[f.op] || f.op}・${f.name}`;
       b.addEventListener('click', async () => {
         if (f.op !== op) await switchOp(f.op, true);
         selectStation(f);
@@ -259,7 +267,7 @@
     cur = st;
     store.set(KEY.last, st);
     $('metroBoardCard').hidden = false;
-    $('metroStationTitle').textContent = `${OPS[st.op]}・${st.name}`;
+    $('metroStationTitle').textContent = `${OPS[st.op] || st.op}・${st.name}`;
     $('metroUpdated').textContent = '載入中…';
     $('metroBoard').replaceChildren();
     liveList = null;

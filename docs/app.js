@@ -7,16 +7,20 @@
   const $ = (id) => document.getElementById(id);
   const norm = (s) => (s || '').trim().replace(/台/g, '臺'); // 「台」「臺」視為相同
 
+  // 個人版（如 yayu）：同網域下各版本的 localStorage 用前綴分開，一般版維持原本的鍵名
+  const PROFILE = window.TRA_PROFILE || {};
+  const PFX = PROFILE.prefix || '';
+
   // localStorage 安全讀寫（私密模式可能丟例外）
   const store = {
     get(key, fallback) {
       try {
-        const v = localStorage.getItem(key);
+        const v = localStorage.getItem(PFX + key);
         return v ? JSON.parse(v) : fallback;
       } catch { return fallback; }
     },
     set(key, val) {
-      try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* 忽略 */ }
+      try { localStorage.setItem(PFX + key, JSON.stringify(val)); } catch { /* 忽略 */ }
     },
   };
 
@@ -455,7 +459,7 @@
   // 註冊 Service Worker（讓 App 可安裝、可離線開啟）
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(() => { /* 忽略 */ });
+      navigator.serviceWorker.register((PROFILE.root || '') + 'sw.js').catch(() => { /* 忽略 */ });
     });
   }
 })();

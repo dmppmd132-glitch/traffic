@@ -1,0 +1,57 @@
+/* 個人版主題：用 <html data-theme="pig|bunny"> 切換；一般版沒有這個屬性，不受影響 */
+
+/* ---------- 小豬 ---------- */
+:root[data-theme="pig"] {
+  --bg: #fff3f7;
+  --card: #ffffff;
+  --text: #3a2430;
+  --sub: #8a6674;
+  --line: #f8d6e2;
+  --brand: #d8457a;
+  --brand-text: #ffffff;
+  --top-bg: linear-gradient(135deg, #ff8fb1, #e8628d);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="pig"] {
+    --bg: #241519;
+    --card: #2f1c22;
+    --text: #fbe9ef;
+    --sub: #c79aab;
+    --line: #4a2a35;
+    --brand: #ff8fb1;
+    --brand-text: #3a1020;
+    --top-bg: linear-gradient(135deg, #7a2b47, #5a1f35);
+  }
+}
+:root[data-theme="pig"] .top h1::before { content: '🐷 '; }
+
+/* ---------- 兔子 ---------- */
+:root[data-theme="bunny"] {
+  --bg: #f7f4ff;
+  --card: #ffffff;
+  --text: #2e2745;
+  --sub: #766f94;
+  --line: #e4dcff;
+  --brand: #7d62d9;
+  --brand-text: #ffffff;
+  --top-bg: linear-gradient(135deg, #a994f0, #7d62d9);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="bunny"] {
+    --bg: #171427;
+    --card: #211d36;
+    --text: #ece8ff;
+    --sub: #aaa3cc;
+    --line: #342e52;
+    --brand: #a994f0;
+    --brand-text: #1a1230;
+    --top-bg: linear-gradient(135deg, #3d3270, #2b2350);
+  }
+}
+:root[data-theme="bunny"] .top h1::before { content: '🐰 '; }
+
+/* ---------- 共用的主題外觀 ---------- */
+:root[data-theme] .top { background: var(--top-bg); }
+:root[data-theme] .card { border-radius: 18px; }
+:root[data-theme] .chip, :root[data-theme] button.primary { border-radius: 999px; }
+:root[data-theme] .city-tabs { margin-bottom: 10px; }

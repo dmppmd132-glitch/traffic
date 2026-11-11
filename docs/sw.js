@@ -1,6 +1,6 @@
 // Service Worker：App 外殼快取 + API 網路優先
 // 每次改了前端檔案，記得把 VERSION 加一，舊快取才會被清掉
-const VERSION = 'v24';
+const VERSION = 'v25';
 const SHELL = `tra-shell-${VERSION}`;
 const DATA = `tra-data-${VERSION}`;
 
@@ -17,6 +17,15 @@ const SHELL_FILES = [
   'icon.svg',
   'icon-192.png',
   'icon-512.png',
+  'themes.css',
+  // Yayu 版（個人版）
+  'yayu/',
+  'yayu/index.html',
+  'yayu/profile.js',
+  'yayu/manifest.webmanifest',
+  'yayu/icon.svg',
+  'yayu/icon-192.png',
+  'yayu/icon-512.png',
 ];
 
 self.addEventListener('install', (e) => {
@@ -78,6 +87,6 @@ self.addEventListener('fetch', (e) => {
         }
         return res;
       })
-      .catch(() => caches.match(req).then((hit) => hit || caches.match('index.html')))
+      .catch(() => caches.match(req).then((hit) => hit || caches.match(url.pathname.includes('/yayu/') ? 'yayu/index.html' : 'index.html')))
   );
 });

@@ -1,0 +1,16 @@
+{
+  "name": "Yayu 的交通",
+  "short_name": "Yayu",
+  "description": "台北、新北的公車、捷運與台鐵時刻，記住常用路線",
+  "lang": "zh-Hant",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fff3f7",
+  "theme_color": "#e8628d",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

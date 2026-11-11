@@ -66,6 +66,23 @@ TDX_SECRET=xxx
 - Worker 提供 `/api/metro/stations`（路線與車站，快取 1 天）與 `/api/metro/live`（即時到站看板，快取 15 秒），參數為 `op`。
 - 即時資料不會被 Service Worker 快取。
 
+## 個人版（Yayu）與主題
+
+同一套程式、同一個 Worker，用子資料夾提供不同介面：
+
+| 版本 | 網址 | 內容 |
+|---|---|---|
+| 一般版 | `/traffic/` | 台鐵 + 高雄公車 + 高雄捷運輕軌 |
+| Yayu 版 | `/traffic/yayu/` | 台鐵 + 台北／新北公車 + 台北捷運、新北捷運、淡海輕軌、安坑輕軌，小豬主題 |
+
+- 設定在 `docs/yayu/profile.js`：縣市（`cities`）、捷運營運商（`metroOps`，TDX 代碼）、主題（`theme`：`pig` 小豬或 `bunny` 兔子）、地圖公車圖示（`busEmoji`）。
+- 換成兔子：把 `theme` 改成 `'bunny'`、`busEmoji` 改 `'🐰'`，並把 `yayu/manifest.webmanifest` 的圖示換成 `icon-bunny-192.png`、`icon-bunny-512.png`（`yayu/icon-bunny.svg` 為原稿）。
+- 主題樣式在 `docs/themes.css`，一般版沒有 `data-theme`，不受影響。
+- 各版的 localStorage 用前綴分開（Yayu 為 `yayu.`），常用路線不會互相混在一起；公車的路線、常用、最近查詢再依縣市分開。
+- 新增另一個人的版本：複製 `docs/yayu/` 資料夾、改 `profile.js`、改 `index.html` 的標題與捷運按鈕，並把新檔案加進 `docs/sw.js` 的 `SHELL_FILES`。
+- 手動班表（`schedule-local.json`）只有高雄；台北、新北的站站時刻依 TDX 資料，沒有資料時會顯示「沒有提供」。
+- Worker 的捷運營運商：`KRTC`、`KLRT`、`TRTC`、`NTMC`、`NTDLRT`、`NTALRT`。改了 Worker 要重新貼到 Cloudflare 並 Deploy。
+
 ## Token 共用（KV，建議）
 
 TDX 對取得 token 有頻率限制，多個 Worker 實例同時取會遇到 429。綁定 KV 後 token 會跨實例共用：
