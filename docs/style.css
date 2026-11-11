@@ -281,3 +281,4 @@ button.outline { color: var(--brand); border-color: var(--brand); }
 .st-item:last-child { border-bottom: 0; }
 .st-item:active, .st-item:hover { background: var(--bg); }
 .st-empty { padding: 12px 14px; color: var(--sub); font-size: 14px; }
+.tabs[hidden] { display: none; }

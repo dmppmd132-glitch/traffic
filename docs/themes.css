@@ -60,3 +60,28 @@
 :root[data-theme] .top h1.has-logo { display: flex; align-items: center; gap: 8px; }
 :root[data-theme] .top h1.has-logo::before { content: none; }
 .top .logo { border-radius: 9px; background: #fff; }
+
+/* ---------- 路線規劃（Yayu 版） ---------- */
+.top { gap: 8px; }
+.plan-btn { margin-left: auto; padding: 6px 12px; border: 1px solid rgba(255,255,255,.7); border-radius: 999px; background: rgba(255,255,255,.2); color: #fff; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.plan-btn:active { background: rgba(255,255,255,.35); }
+.top .net { margin-left: 0; }
+.plan-field { display: block; }
+.plan-swap { text-align: center; margin: 4px 0; }
+.plan-swap button { padding: 2px 16px; }
+.plan-google { display: inline-block; margin-top: 8px; font-size: 13px; padding: 0; text-decoration: none; }
+.plan-card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; margin-top: 12px; padding: 12px 14px; }
+.plan-card summary { cursor: pointer; list-style: none; }
+.plan-card summary::-webkit-details-marker { display: none; }
+.plan-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.plan-total { font-size: 22px; color: var(--brand); }
+.plan-time { color: var(--sub); font-size: 14px; }
+.plan-top em { font-style: normal; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--brand); color: var(--brand-text); }
+.plan-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.plan-chip { font-size: 13px; padding: 3px 9px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); }
+.plan-chip.bus { border-color: #4cae78; } .plan-chip.metro { border-color: #4c8dff; } .plan-chip.train, .plan-chip.hsr { border-color: #9b7bd6; }
+.plan-meta { font-size: 12px; color: var(--sub); }
+.plan-steps { margin: 10px 0 0; padding-left: 20px; font-size: 14px; }
+.plan-steps li { margin: 6px 0; }
+.plan-raw summary { cursor: pointer; font-size: 13px; color: var(--sub); }
+.plan-raw pre { white-space: pre-wrap; word-break: break-all; font-size: 11px; max-height: 40vh; overflow: auto; }

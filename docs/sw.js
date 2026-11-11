@@ -1,6 +1,6 @@
 // Service Worker：App 外殼快取 + API 網路優先
 // 每次改了前端檔案，記得把 VERSION 加一，舊快取才會被清掉
-const VERSION = 'v31';
+const VERSION = 'v32';
 const SHELL = `tra-shell-${VERSION}`;
 const DATA = `tra-data-${VERSION}`;
 
@@ -23,6 +23,7 @@ const SHELL_FILES = [
   'yayu/',
   'yayu/index.html',
   'yayu/profile.js',
+  'yayu/plan.js',
   'yayu/manifest.webmanifest',
   'yayu/icon-192.png',
   'yayu/icon-512.png',
@@ -60,7 +61,7 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== location.origin && !isApi) return;
 
   // 即時資料（台鐵誤點、公車到站與位置、捷運到站看板）：不快取，直接走網路
-  const live = ['/api/delay', '/api/bus/eta', '/api/bus/pos', '/api/metro/live', '/api/bike/availability'];
+  const live = ['/api/delay', '/api/bus/eta', '/api/bus/pos', '/api/metro/live', '/api/bike/availability', '/api/plan'];
   if (live.includes(url.pathname)) return;
 
   // 車站、時刻表：網路優先，失敗時退回上次的快取（離線也能看查過的路線）

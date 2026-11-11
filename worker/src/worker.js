@@ -189,6 +189,70 @@ async function scheduleGet(env, ctx, city, route, name) {
   return upstream;
 }
 
+// ---------- 路線規劃（TDX 運具整合路徑規劃）----------
+// 網址可用環境變數 PLAN_URL 覆寫（TDX 若調整版本，不用改程式）
+const PLAN_URL_DEFAULT = 'https://tdx.transportdata.tw/api/maps/routing/v3.0/transit';
+
+async function planGet(env, ctx, url) {
+  const num = (k) => { const v = url.searchParams.get(k); return v !== null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : null; };
+  const olat = num('olat'), olon = num('olon'), dlat = num('dlat'), dlon = num('dlon');
+  const okLat = (v) => v !== null && v > 20 && v < 27;
+  const okLon = (v) => v !== null && v > 117 && v < 124;
+  if (!okLat(olat) || !okLat(dlat) || !okLon(olon) || !okLon(dlon)) {
+    return json({ error: '座標參數錯誤（需為台灣範圍內的經緯度）' }, 400);
+  }
+  const r5 = (v) => v.toFixed(5);
+  // 即時規劃：相同起訖 60 秒內共用結果，減少 TDX 呼叫次數
+  const minute = Math.floor(Date.now() / 60000);
+  const cache = caches.default;
+  const cacheKey = new Request(`https://cache.local/plan?${r5(olat)},${r5(olon)}>${r5(dlat)},${r5(dlon)}&m=${minute}`);
+  const hit = await cache.match(cacheKey);
+  if (hit) return hit;
+
+  const base = env.PLAN_URL || PLAN_URL_DEFAULT;
+  const call = async (extra) => fetch(`${base}?origin=${r5(olat)},${r5(olon)}&destination=${r5(dlat)},${r5(dlon)}${extra}`, {
+    headers: { authorization: `Bearer ${await getToken(env)}`, 'accept-encoding': 'gzip' },
+  });
+  let upstream = await call('&top=5');
+  // 參數被拒絕（400 / 422）時，改用最精簡的參數再試一次
+  if (upstream.status === 400 || upstream.status === 422) upstream = await call('');
+  if (upstream.status === 429 || upstream.status >= 500) { await sleep(700); upstream = await call(''); }
+  if (!upstream.ok) {
+    let detail = '';
+    try { detail = (await upstream.text()).slice(0, 300); } catch { /* 忽略 */ }
+    return json({ error: 'TDX 路線規劃回應錯誤', status: upstream.status, base, detail }, 502);
+  }
+  const res = new Response(upstream.body, {
+    status: 200,
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=60' },
+  });
+  ctx.waitUntil(cache.put(cacheKey, res.clone()));
+  return res;
+}
+
+// 地名搜尋（OpenStreetMap Nominatim，限台灣）：回傳 [{name, label, lat, lon}]，快取一天
+async function geocodeGet(ctx, url) {
+  const q = (url.searchParams.get('q') || '').trim();
+  if (q.length < 1 || q.length > 60 || /[\u0000-\u001F\u007F]/.test(q)) return json({ error: '搜尋文字格式錯誤' }, 400);
+  const cache = caches.default;
+  const cacheKey = new Request('https://cache.local/geocode?q=' + encodeURIComponent(q));
+  const hit = await cache.match(cacheKey);
+  if (hit) return hit;
+  const api = 'https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=tw&limit=6&accept-language=zh-TW&q=' + encodeURIComponent(q);
+  const upstream = await fetch(api, { headers: { 'user-agent': 'yayu-transit-planner (personal PWA; github.com/dmppmd132-glitch/traffic)' } });
+  if (!upstream.ok) return json({ error: '地名搜尋失敗', status: upstream.status }, 502);
+  const list = (await upstream.json()).map((r) => ({
+    name: (r.name || (r.display_name || '').split(',')[0] || '').trim(),
+    label: (r.display_name || '').split(',').slice(0, 4).map((s) => s.trim()).join('、'),
+    lat: Number(r.lat), lon: Number(r.lon),
+  })).filter((r) => r.name && Number.isFinite(r.lat) && Number.isFinite(r.lon));
+  const res = new Response(JSON.stringify(list), {
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=86400' },
+  });
+  ctx.waitUntil(cache.put(cacheKey, res.clone()));
+  return res;
+}
+
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
@@ -222,6 +286,10 @@ async function route(env, ctx, url) {
     if (p === '/api/delay') {
       return await tdxGet(env, ctx, '/v2/Rail/TRA/LiveTrainDelay', 30);
     }
+
+    // 路線規劃與地名搜尋：/api/plan?olat=&olon=&dlat=&dlon=、/api/geocode?q=
+    if (p === '/api/plan') return await planGet(env, ctx, url);
+    if (p === '/api/geocode') return await geocodeGet(ctx, url);
 
     // ---------- 公車（預設高雄 Kaohsiung）----------
     if (p.startsWith('/api/bus/')) {

@@ -90,6 +90,13 @@ TDX_SECRET=xxx
 - 手動班表（`schedule-local.json`）只有高雄；台北、新北的站站時刻依 TDX 資料，沒有資料時會顯示「沒有提供」。
 - Worker 的捷運營運商：`KRTC`、`KLRT`、`TRTC`、`NTMC`、`NTDLRT`、`NTALRT`。改了 Worker 要重新貼到 Cloudflare 並 Deploy。
 
+### 路線規劃（Yayu 版）
+
+- 標頭的「🧭 路線規劃」按鈕：輸入起點、終點（或「我的位置」），列出多種走法，比較火車、捷運、公車，標示「最快 / 轉乘最少 / 走路最少」，點開可看逐段步驟與時間。前端為 `docs/yayu/plan.js`。
+- Worker：`/api/plan`（TDX 運具整合路徑規劃，預設網址 `https://tdx.transportdata.tw/api/maps/routing/v3.0/transit`，可用 Worker 環境變數 `PLAN_URL` 覆寫）與 `/api/geocode`（地名搜尋，OpenStreetMap Nominatim，限台灣，快取 1 天）。
+- 這個 TDX API 的網址、參數與欄位是依慣例撰寫、尚未用實際帳號驗證。若規劃失敗，畫面下方「原始資料（排查用）」會顯示 TDX 的回應，依此調整 `worker.js` 的 `planGet` 與 `plan.js` 的 `parseRoute`。
+- 每次規劃會呼叫 TDX 一次（相同起訖 60 秒內共用快取）；基礎會員每分鐘僅 5 次，請留意額度。
+
 ## Token 共用（KV，建議）
 
 TDX 對取得 token 有頻率限制，多個 Worker 實例同時取會遇到 429。綁定 KV 後 token 會跨實例共用：

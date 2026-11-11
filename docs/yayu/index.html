@@ -18,6 +18,7 @@
   <header class="top">
     <h1 class="has-logo"><img class="logo" src="logo.png" alt="" width="34" height="34">yayu 豬豬轉運站</h1>
     <span id="netStatus" class="net" hidden>離線</span>
+    <button id="planBtn" type="button" class="plan-btn">🧭 路線規劃</button>
   </header>
 
   <nav class="tabs" aria-label="交通工具">
@@ -169,10 +170,49 @@
     </section>
   </main>
 
+  <main id="planView" hidden>
+    <section class="card">
+      <div class="head">
+        <h2>路線規劃</h2>
+        <button id="planBack" type="button" class="outline">← 返回</button>
+      </div>
+      <label class="plan-field">
+        <span>起點</span>
+        <div class="input-clear">
+          <input id="planFrom" placeholder="輸入地名，例如 台北車站" autocomplete="off" inputmode="search">
+          <button id="planLocate" type="button" class="clear-btn">◎ 我的位置</button>
+        </div>
+      </label>
+      <div class="plan-swap"><button id="planSwap" type="button" aria-label="對調起點與終點">⇅</button></div>
+      <label class="plan-field">
+        <span>終點</span>
+        <input id="planTo" placeholder="輸入地名，例如 板橋車站" autocomplete="off" inputmode="search">
+      </label>
+      <div class="actions">
+        <button id="planSearch" type="button" class="primary">規劃路線</button>
+      </div>
+      <p id="planMsg" class="msg" role="status"></p>
+      <a id="planGoogle" class="link plan-google" target="_blank" rel="noopener" hidden>也可以用 Google 地圖查看這段路線 ↗</a>
+    </section>
+
+    <section class="card" id="planRecentBlock" hidden>
+      <h2>最近的路線</h2>
+      <div id="planRecent" class="chips"></div>
+    </section>
+
+    <section id="planResults" aria-live="polite"></section>
+
+    <details id="planRaw" class="card plan-raw" hidden>
+      <summary>原始資料（排查用）</summary>
+      <pre id="planRawText"></pre>
+    </details>
+  </main>
+
   <datalist id="stationList"></datalist>
   <script src="../config.js"></script>
   <script src="../app.js"></script>
   <script src="../bus.js"></script>
   <script src="../metro.js"></script>
+  <script src="plan.js"></script>
 </body>
 </html>
