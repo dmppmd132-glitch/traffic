@@ -74,22 +74,54 @@ async function getToken(env) {
 
 // 呼叫 TDX 並用 Cache API 快取結果，減少 API 次數（TDX 有呼叫額度限制）
 // query：額外的 OData 參數（例如 %24select=...），用來縮小回傳資料量
-async function tdxGet(env, ctx, path, ttl, query = '') {
+// skipEmpty：回傳空陣列 [] 時不快取（避免 TDX 之後補上資料還拿到舊的空結果）
+async function tdxGet(env, ctx, path, ttl, query = '', skipEmpty = false) {
   const cache = caches.default;
   const cacheKey = new Request('https://cache.local' + path + '?' + query);
 
   const hit = await cache.match(cacheKey);
   if (hit) return hit;
 
-  const token = await getToken(env);
-  const upstream = await fetch(`${TDX_BASE}${path}?%24format=JSON${query ? '&' + query : ''}`, {
-    headers: { authorization: `Bearer ${token}`, 'accept-encoding': 'gzip' },
+  const url = `${TDX_BASE}${path}?%24format=JSON${query ? '&' + query : ''}`;
+  const call = async () => fetch(url, {
+    headers: { authorization: `Bearer ${await getToken(env)}`, 'accept-encoding': 'gzip' },
   });
+
+  let upstream = await call();
+  // 暫時性錯誤自動重試一次：429（太頻繁）、5xx（TDX 暫時異常）；401 代表 token 失效，清掉後重取
+  if (upstream.status === 401) {
+    tokenCache = { token: null, exp: 0 };
+    if (env.TOKEN_KV) { try { await env.TOKEN_KV.delete('tdx_token'); } catch { /* 忽略 */ } }
+    upstream = await call();
+  } else if (upstream.status === 429 || upstream.status >= 500) {
+    await sleep(700);
+    upstream = await call();
+  }
 
   if (!upstream.ok) {
     let detail = '';
     try { detail = (await upstream.text()).slice(0, 200); } catch { /* 忽略 */ }
     return json({ error: 'TDX 回應錯誤', status: upstream.status, path, detail }, 502);
+  }
+
+  // 空結果：直接回傳、不放進快取（回應標頭也不要求瀏覽器快取）
+  if (skipEmpty) {
+    const text = await upstream.text();
+    if (text.trim().length <= 2) {
+      return new Response(text, {
+        status: 200,
+        headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+      });
+    }
+    const res = new Response(text, {
+      status: 200,
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': `public, max-age=${ttl}`,
+      },
+    });
+    ctx.waitUntil(cache.put(cacheKey, res.clone()));
+    return res;
   }
 
   const res = new Response(upstream.body, {
@@ -108,7 +140,7 @@ async function scheduleGet(env, ctx, city, route, name) {
   if (env.DB) {
     try {
       const row = await env.DB.prepare(
-        'SELECT payload FROM bus_schedule_cache WHERE cache_key = ? AND updated_at > ?'
+        'SELECT payload FROM bus_schedule_cache WHERE cache_key = ? AND updated_at > ? AND length(payload) > 2'
       ).bind(cacheKey, Date.now() - 86400000).first();
       // 直接回傳存好的文字，不再解析後重新轉換，省下 CPU 時間
       if (row && row.payload) {
@@ -120,14 +152,16 @@ async function scheduleGet(env, ctx, city, route, name) {
   }
   const upstream = await tdxGet(
     env, ctx, `/v2/Bus/Schedule/City/${city}/${name}`, 86400,
-    '%24select=RouteName,SubRouteUID,SubRouteName,Direction,Timetables'
+    '%24select=RouteName,SubRouteUID,SubRouteName,Direction,Timetables',
+    true
   );
-  // 先把結果回給使用者；寫入 D1 放到背景進行，不讓使用者等待
+  // 先把結果回給使用者；寫入 D1 放到背景進行，不讓使用者等待（空結果不寫入）
   if (env.DB && upstream.ok) {
     const copy = upstream.clone();
     ctx.waitUntil((async () => {
       try {
         const payload = await copy.text();
+        if (payload.trim().length <= 2) return;
         await env.DB.prepare(
           'INSERT OR REPLACE INTO bus_schedule_cache (cache_key, city, route, payload, updated_at) VALUES (?, ?, ?, ?, ?)'
         ).bind(cacheKey, city, route, payload, Date.now()).run();
