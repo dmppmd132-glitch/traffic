@@ -94,9 +94,9 @@ TDX_SECRET=xxx
 ### 路線規劃（Yayu 版）
 
 - 標頭的「🧭 路線規劃」按鈕：輸入起點、終點（或「我的位置」），列出多種走法，比較火車、捷運、公車，標示「最快 / 轉乘最少 / 走路最少」，點開可看逐段步驟與時間。前端為 `docs/yayu/plan.js`。
-- Worker：`/api/plan`（TDX 運具整合路徑規劃，預設網址 `https://tdx.transportdata.tw/api/maps/routing/v3.0/transit`，可用 Worker 環境變數 `PLAN_URL` 覆寫）與 `/api/geocode`（地名搜尋，OpenStreetMap Nominatim，限台灣，快取 1 天）。
-- 這個 TDX API 的網址、參數與欄位是依慣例撰寫、尚未用實際帳號驗證。若規劃失敗，畫面下方「原始資料（排查用）」會顯示 TDX 的回應，依此調整 `worker.js` 的 `planGet` 與 `plan.js` 的 `parseRoute`。
-- TDX 規定 `transit`（運具代碼）與 `gc` 為必填。運具代碼對照尚未從官方文件確認，Worker 會依序嘗試 `1,2,3,4,5,6,7,8,9` → `1,2,3,4,5,6,7` → `3,4,5,6,7`，成功的組合會暫存；也可在 Worker 設定環境變數 `PLAN_TRANSIT` 直接指定。
+- Worker：`/api/plan`（TDX MaaS 旅運規劃，網址 `https://tdx.transportdata.tw/api/maas/routing`，可用環境變數 `PLAN_URL` 覆寫）與 `/api/geocode`（地名搜尋：先用 TDX 地理編碼，查不到或被限流再退回 OpenStreetMap Nominatim；有結果才快取 1 天）。
+- TDX 規定 `gc`、`transit` 為必填，出發時間為台北時間「現在 + 5 分鐘」。`transit`（運具代碼）預設 `3,4,5,6,7`（取自他人實測，各代碼對應的運具未從官方文件確認）；若結果缺火車或捷運，可在 Worker 設定環境變數 `PLAN_TRANSIT`（例如 `1,2,3,4,5,6,7`）調整，不用改程式。
+- 規劃失敗時，畫面下方「原始資料（排查用）」會顯示 TDX 回應，依此排查。
 - 每次規劃會呼叫 TDX 一次（相同起訖 60 秒內共用快取）；基礎會員每分鐘僅 5 次，請留意額度。
 
 ## Token 共用（KV，建議）
