@@ -268,6 +268,15 @@
   const DAY_KEYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const DAY_ZH = { Monday: '一', Tuesday: '二', Wednesday: '三', Thursday: '四', Friday: '五', Saturday: '六', Sunday: '日' };
+  // Premium 的 ServiceDay 是 {ServiceTag:'平日'|'周末'}；轉成與基本班表相同的星期旗標，之後的篩選與標籤就能共用
+  const normService = (sd) => {
+    if (!sd || typeof sd !== 'object' || !sd.ServiceTag) return sd || null;
+    const tag = String(sd.ServiceTag);
+    const on = (days) => Object.fromEntries(DAY_KEYS.map((k) => [k, days.includes(k) ? 1 : 0]));
+    if (/平日/.test(tag)) return on(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']);
+    if (/[周週]末|假日/.test(tag)) return on(['Saturday', 'Sunday']);
+    return null; // 不認得的標籤：視為每天都行駛
+  };
   const runsOn = (sd, key) => !sd || sd[key] === 1 || sd[key] === true;
   const dayLabel = (sd) => {
     if (!sd) return '';
@@ -307,7 +316,7 @@
           direction,
           sub: group.SubRouteUID || '',
           label: nameOf(group.SubRouteName),
-          service: trip.ServiceDay || group.ServiceDay || null,
+          service: normService(trip.ServiceDay || group.ServiceDay),
           dep,
           end: stopTime(last),
           stopTimes: stops.map((s) => ({
