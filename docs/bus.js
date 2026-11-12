@@ -286,7 +286,15 @@
     const stopTime = (s) => (
       s && (s.DepartureTime || s.ArrivalTime || s.HistoricalEstArrivalTime || s.EstimatedArrivalTime) || ''
     ).slice(0, 5);
-    for (const group of pickArray(data)) {
+    // Premium 的結構多一層：[{RouteName, Schedules:[{SubRouteUID, Direction, Timetables}]}]，先攤平成「每個方向一組」
+    const groups = [];
+    for (const g of pickArray(data)) {
+      if (g && Array.isArray(g.Schedules)) {
+        for (const sg of g.Schedules) groups.push({ ...sg, SubRouteName: sg.SubRouteName || g.RouteName });
+      } else groups.push(g);
+    }
+    const nameOf = (n) => (n && typeof n === 'object' ? n.Zh_tw : n); // Premium 的名稱是字串，Basic 是 {Zh_tw}
+    for (const group of groups) {
       const direction = group.Direction;
       const timetables = group.Timetables || group.Trips || [];
       for (const trip of timetables) {
@@ -298,7 +306,7 @@
         rows.push({
           direction,
           sub: group.SubRouteUID || '',
-          label: group.SubRouteName && group.SubRouteName.Zh_tw,
+          label: nameOf(group.SubRouteName),
           service: trip.ServiceDay || group.ServiceDay || null,
           dep,
           end: stopTime(last),
@@ -744,36 +752,49 @@
 
     const scheduleTask = (async () => {
       try {
-        // 基本班表失敗（TDX 暫時錯誤、限流等）不算致命：當作沒有資料，繼續嘗試 Premium 與手動班表
+        // 手動班表（高雄公車處官方資料，只有高雄有）
+        const tryLocal = async () => {
+          const local = await loadLocalSchedule();
+          if (stale()) return false;
+          const info = findLocalSchedule(local, route);
+          if (info && renderLocalSchedule(info, entry)) return true;
+          if (!info) console.info('手動班表沒有對應的路線：', route, '（可用的鍵：', Object.keys(local).join('、'), '）');
+          return false;
+        };
+        // TDX Premium v3 歷史推估站站班表（近 3 個月公車動態推算，非官方班表）
+        const tryPremium = async () => {
+          const premium = await api(apiQ('schedule-premium', route), 60000).catch(() => []);
+          if (stale()) return false;
+          const premiumParsed = parseSchedule(premium);
+          if (!premiumParsed.length && !(premiumParsed.freqs || []).length) return false;
+          premiumParsed._source = 'premium';
+          renderTimetable(premiumParsed);
+          $('busScheduleStatus').textContent += '（TDX 推估）';
+          return true;
+        };
+
+        // 高雄：基本班表幾乎都是空的（白白浪費 TDX 額度），所以順序為
+        // 手動班表（官方）→ Premium 推估 → 基本班表；其他縣市：基本班表 → Premium 推估
+        if (CITY === 'Kaohsiung') {
+          if (await tryLocal()) return;
+          if (stale() || (await tryPremium())) return;
+          if (stale()) return;
+        }
+
+        // 基本班表失敗（TDX 暫時錯誤、限流等）不算致命：當作沒有資料，再試其他來源
         let basicErr = null;
         const schedule = cur.scheduleData || (await api(apiQ('schedule', route), 60000).catch((e) => { basicErr = e; return []; }));
         if (stale()) return;
-        if (basicErr) console.info('基本班表讀取失敗，改試其他來源：', basicErr.message);
+        if (basicErr) console.info('基本班表讀取失敗：', basicErr.message);
         if (pickArray(schedule).length) cur.scheduleData = schedule;
-        let parsed = parseSchedule(schedule);
+        const parsed = parseSchedule(schedule);
+        const hasBasic = parsed.length || (parsed.freqs || []).length;
 
-        // Basic Schedule 常沒有完整逐站資料；改用 TDX Premium v3 歷史推估站站班表補足。
-        if (!parsed.length && !(parsed.freqs || []).length) {
-          const premium = await api(apiQ('schedule-premium', route), 60000).catch(() => []);
+        if (!hasBasic && CITY !== 'Kaohsiung') {
+          if (await tryPremium()) return;
           if (stale()) return;
-          const premiumParsed = parseSchedule(premium);
-          if (premiumParsed.length || (premiumParsed.freqs || []).length) {
-            parsed = premiumParsed;
-            parsed._source = 'premium';
-            renderTimetable(parsed);
-            $('busScheduleStatus').textContent += '（TDX 推估）';
-            return;
-          }
         }
-
-        if (!parsed.length && !(parsed.freqs || []).length && CITY === 'Kaohsiung') {
-          const local = await loadLocalSchedule();
-          if (stale()) return;
-          const info = findLocalSchedule(local, route);
-          if (info && renderLocalSchedule(info, entry)) return;
-          if (!info) console.info('手動班表沒有對應的路線：', route, '（可用的鍵：', Object.keys(local).join('、'), '）');
-        }
-        if (basicErr && !parsed.length && !(parsed.freqs || []).length) {
+        if (basicErr && !hasBasic) {
           $('busTimetable').innerHTML = `<p class="empty">時刻表載入失敗（${basicErr.message}），請稍後再試。</p>`;
           $('busScheduleStatus').textContent = '讀取失敗';
           return;
