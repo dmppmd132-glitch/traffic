@@ -10,12 +10,11 @@ ALLOWED_ORIGIN = "https://dmppmd132-glitch.github.io"
 # 以下兩個綁定目前已在 Cloudflare 網頁上設定好（變數名稱必須是 DB、TOKEN_KV）。
 # 若改用 `wrangler deploy` 部署，請把這兩段保持啟用，否則會覆蓋掉網頁上的綁定。
 
-# D1：公車站站時刻表快取（24 小時）。database_id 請到 Cloudflare 後台 D1 → tra-timetable 複製，
-# 填入後取消註解。
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "tra-timetable"
-# database_id = "貼上你的 D1 database_id"
+# D1：公車站站時刻表快取（24 小時）。資料表請先執行 schema.sql（網頁 Console 已建立過）。
+[[d1_databases]]
+binding = "DB"
+database_name = "tra-timetable"
+database_id = "7a5a215a-2ae5-4d28-a061-ae783fabd533"
 
 # KV：TDX token 跨機器共用，避免 429
 [[kv_namespaces]]
