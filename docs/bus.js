@@ -744,8 +744,11 @@
 
     const scheduleTask = (async () => {
       try {
-        const schedule = cur.scheduleData || (await api(apiQ('schedule', route), 60000));
+        // 基本班表失敗（TDX 暫時錯誤、限流等）不算致命：當作沒有資料，繼續嘗試 Premium 與手動班表
+        let basicErr = null;
+        const schedule = cur.scheduleData || (await api(apiQ('schedule', route), 60000).catch((e) => { basicErr = e; return []; }));
         if (stale()) return;
+        if (basicErr) console.info('基本班表讀取失敗，改試其他來源：', basicErr.message);
         if (pickArray(schedule).length) cur.scheduleData = schedule;
         let parsed = parseSchedule(schedule);
 
@@ -769,6 +772,11 @@
           const info = findLocalSchedule(local, route);
           if (info && renderLocalSchedule(info, entry)) return;
           if (!info) console.info('手動班表沒有對應的路線：', route, '（可用的鍵：', Object.keys(local).join('、'), '）');
+        }
+        if (basicErr && !parsed.length && !(parsed.freqs || []).length) {
+          $('busTimetable').innerHTML = `<p class="empty">時刻表載入失敗（${basicErr.message}），請稍後再試。</p>`;
+          $('busScheduleStatus').textContent = '讀取失敗';
+          return;
         }
         renderTimetable(parsed);
       } catch (err) {
