@@ -35,7 +35,7 @@
       const res = await fetch(base + path, { signal: ctrl.signal });
       if (!res.ok) {
         let msg = '伺服器回應 ' + res.status;
-        try { const b = await res.json(); if (b && b.status) msg += `（TDX ${b.status}）`; } catch { /* 忽略 */ }
+        try { const b = await res.json(); if (b && b.status) msg += `（TDX ${b.status} ${b.path || ''} ${String(b.detail || '').slice(0, 80)}）`; } catch { /* 忽略 */ }
         throw new Error(msg);
       }
       return await res.json();

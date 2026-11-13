@@ -58,7 +58,12 @@
     const timer = setTimeout(() => ctl.abort(), ms); // 逾時就中止，讓畫面能顯示錯誤而不是一直轉圈
     try {
       const res = await fetch(base + path, { signal: ctl.signal });
-      if (!res.ok) throw new Error('伺服器回應 ' + res.status);
+      if (!res.ok) {
+        // 帶出 Worker 回傳的原因（TDX 狀態碼、路徑），方便判斷問題
+        let why = '';
+        try { const b = await res.json(); why = [b.status ? 'TDX ' + b.status : '', b.path || '', b.detail || b.error || ''].filter(Boolean).join(' '); } catch { /* 沒有內文就略過 */ }
+        throw new Error('伺服器回應 ' + res.status + (why ? '（' + why.slice(0, 120) + '）' : ''));
+      }
       return await res.json();
     } catch (err) {
       if (err && err.name === 'AbortError') throw new Error('連線逾時：' + path.split('?')[0].replace('/api/', ''));

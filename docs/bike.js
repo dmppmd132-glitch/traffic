@@ -30,7 +30,12 @@
     const timer = setTimeout(() => ctrl.abort(), ms);
     try {
       const res = await fetch(base + path, { signal: ctrl.signal });
-      if (!res.ok) throw new Error('伺服器回應 ' + res.status);
+      if (!res.ok) {
+        // 帶出 Worker 回傳的原因（TDX 狀態碼、路徑），方便判斷問題
+        let why = '';
+        try { const b = await res.json(); why = [b.status ? 'TDX ' + b.status : '', b.path || '', b.detail || b.error || ''].filter(Boolean).join(' '); } catch { /* 沒有內文就略過 */ }
+        throw new Error('伺服器回應 ' + res.status + (why ? '（' + why.slice(0, 120) + '）' : ''));
+      }
       return await res.json();
     } catch (e) {
       throw new Error(e.name === 'AbortError' ? '連線逾時' : e.message);
