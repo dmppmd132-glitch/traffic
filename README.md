@@ -87,7 +87,7 @@ TDX_SECRET=xxx
 - 主題樣式在 `docs/themes.css`，一般版沒有 `data-theme`，不受影響。
 - 各版的 localStorage 用前綴分開（Yayu 為 `yayu.`），常用路線不會互相混在一起；公車的路線、常用、最近查詢再依縣市分開。
 - 新增另一個人的版本：複製 `docs/yayu/` 資料夾、改 `profile.js`、改 `index.html` 的標題與捷運按鈕，並把新檔案加進 `docs/sw.js` 的 `SHELL_FILES`。
-- 站站時刻的資料來源順序：高雄為「手動班表（高雄公車處官方）→ TDX Premium 推估 → TDX 基本班表」（高雄基本班表幾乎是空的，放最後以節省 TDX 額度）；其他縣市為「基本班表 → Premium 推估」。Premium 是用近 3 個月公車動態推算的平日 / 週末推估班表，畫面會標示「（TDX 推估）」。
+- 站站時刻的資料來源順序：高雄為「手動班表（高雄公車處官方）→ TDX Premium 推估 → TDX 基本班表」（高雄基本班表幾乎是空的，放最後以節省 TDX 額度）；其他縣市為「基本班表 → Premium 推估」。Premium 是用近 3 個月公車動態推算的平日 / 週末推估班表，畫面會標示「（TDX 推估）」。**Premium 依資料量扣點數，預設關閉**；要啟用請在 Worker 設環境變數 `PREMIUM_ENABLED=1`（未啟用時該步驟會自動略過）。
 - 手動班表（`schedule-local.json`）只有高雄；台北、新北的站站時刻依 TDX 資料，沒有資料時會顯示「沒有提供」。
 - Worker 的捷運營運商：`KRTC`、`KLRT`、`TRTC`、`NTMC`、`NTDLRT`、`NTALRT`。改了 Worker 要重新貼到 Cloudflare 並 Deploy。
 

@@ -550,6 +550,8 @@ async function route(env, ctx, url) {
 
       // TDX Premium v3 歷史推估站站班表：basic Schedule 沒有資料時使用
       if (p === '/api/bus/schedule-premium') {
+        // Premium 依資料量扣「點數」，預設關閉；要用請在 Worker 設環境變數 PREMIUM_ENABLED=1
+        if (env.PREMIUM_ENABLED !== '1') return json({ error: 'Premium 已停用（未設定 PREMIUM_ENABLED=1）' }, 403);
         return await premiumScheduleGet(env, ctx, city, name);
       }
 
