@@ -19,7 +19,7 @@ database_id = "7a5a215a-2ae5-4d28-a061-ae783fabd533"
 # KV：TDX token 跨機器共用，避免 429
 [[kv_namespaces]]
 binding = "TOKEN_KV"
-id = "80be28968a3b4087b52e255b993bc71d"
+id = "3bce7fb8fb63489bbc2ba96afbc36d61"
 
 # 金鑰請勿寫在這裡，改用指令設定：
 #   npx wrangler secret put TDX_ID
