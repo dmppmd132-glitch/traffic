@@ -21,7 +21,7 @@
     stations: (op) => `tra.metro.stations.${op}`, // {t, lines}
   };
   const STATIONS_TTL = 7 * 24 * 3600 * 1000;
-  const REFRESH_MS = 20000;
+  const REFRESH_MS = 45000;
   const MAX_FAV = 10;
   // 營運商：一般版為高雄；個人版由 profile.metroOps 指定（TDX 代碼 → 顯示名稱）
   const OPS = PROFILE.metroOps || { KRTC: '高雄捷運', KLRT: '高雄輕軌' };

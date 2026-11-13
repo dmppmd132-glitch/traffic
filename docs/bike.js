@@ -20,7 +20,7 @@
     q: 'tra.bike.q',               // 上次搜尋的站名
   };
   const STATIONS_TTL = 7 * 24 * 3600 * 1000;
-  const REFRESH_MS = 30000;
+  const REFRESH_MS = 60000;
   const MAX_FAV = 15;
   const MAX_SHOW = 30;
 

@@ -50,7 +50,7 @@
   const MAX_FAV_ROUTES = 10;
   const MAX_FAV_STOPS = 10;
   const MAX_HIST = 8;
-  const REFRESH_MS = 20000; // 到站時間自動更新間隔
+  const REFRESH_MS = 45000; // 到站時間自動更新間隔
 
   async function api(path, ms = 20000) {
     const base = (window.TRA_API_BASE || '').replace(/\/$/, '');

@@ -37,7 +37,7 @@ async function fetchToken(env) {
     }
     lastStatus = res.status;
     try { lastBody = (await res.text()).slice(0, 120); } catch { lastBody = ''; }
-    if (res.status !== 429 && res.status < 500) break; // 401、400 等重試也沒用
+    if (res.status < 500) break; // 400、401、429 重試也沒用（429 重試只會更慢解除）
     await sleep(800 * (i + 1));
   }
   throw new Error('TDX 取得 token 失敗：' + lastStatus + (lastBody ? ' ' + lastBody : '') + (!env.TDX_ID || !env.TDX_SECRET ? '（Worker 未設定 TDX_ID/TDX_SECRET）' : ''));
@@ -104,7 +104,7 @@ async function tdxGet(env, ctx, path, ttl, query = '', skipEmpty = false, base =
     tokenCache = { token: null, exp: 0 };
     if (env.TOKEN_KV) { try { await env.TOKEN_KV.delete('tdx_token'); } catch { /* 忽略 */ } }
     upstream = await call();
-  } else if (upstream.status === 429 || upstream.status >= 500) {
+  } else if (upstream.status >= 500) { // 429 不重試，避免加重限流
     await sleep(700);
     upstream = await call();
   }
@@ -255,7 +255,7 @@ async function planGet(env, ctx, url) {
     try { firstErr = (await upstream.text()).slice(0, 200); } catch { /* 忽略 */ }
     upstream = await call(lean);
   }
-  if (upstream.status === 429 || upstream.status >= 500) { await sleep(700); upstream = await call(lean); }
+  if (upstream.status >= 500) { await sleep(700); upstream = await call(lean); }
   if (!upstream.ok) {
     let detail = '';
     try { detail = (await upstream.text()).slice(0, 300); } catch { /* 忽略 */ }
@@ -622,6 +622,14 @@ export default {
       'access-control-max-age': '86400',
       vary: 'origin',
     };
+    // 瀏覽器跨網域呼叫一定帶 Origin：不是本站就拒絕，避免別的網站拿來消耗 TDX 額度
+    // （直接在網址列開啟沒有 Origin，仍可用來測試）
+    const origin = request.headers.get('origin');
+    if (origin && origin !== allowed) {
+      return new Response(JSON.stringify({ error: 'Forbidden origin' }), {
+        status: 403, headers: { 'content-type': 'application/json; charset=utf-8', vary: 'origin' },
+      });
+    }
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
     const res = await route(env, ctx, new URL(request.url));
