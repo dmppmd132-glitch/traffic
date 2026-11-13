@@ -110,8 +110,8 @@ async function tdxGet(env, ctx, path, ttl, query = '', skipEmpty = false, base =
   }
 
   if (!upstream.ok) {
-    // 即時資料（快取 ≤ 60 秒）遇到 429 / 5xx 時，若有上一次成功的資料就先回舊的，使用者不會看到錯誤
-    if (ttl <= 60 && (upstream.status === 429 || upstream.status >= 500)) {
+    // 遇到 429 / 5xx 時，若有上一次成功的資料就先回舊的，使用者不會看到錯誤
+    if (upstream.status === 429 || upstream.status >= 500) {
       const old = await cache.match(staleKey);
       if (old) {
         const r = new Response(old.body, old);
@@ -153,10 +153,11 @@ async function tdxGet(env, ctx, path, ttl, query = '', skipEmpty = false, base =
     },
   });
   ctx.waitUntil(cache.put(cacheKey, res.clone()));
-  if (ttl <= 60) {
+  {
+    // 舊副本：即時資料留 10 分鐘，靜態資料（站牌、路線、形狀…）留 7 天，被限流時可先回舊的
     const keep = new Response(res.clone().body, {
       status: 200,
-      headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=600' },
+      headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': `public, max-age=${ttl <= 60 ? 600 : 604800}` },
     });
     ctx.waitUntil(cache.put(staleKey, keep));
   }
@@ -514,7 +515,7 @@ async function route(env, ctx, url) {
       // 路線站序：/api/bus/stops?city=Kaohsiung&route=紅9
       if (p === '/api/bus/stops') {
         return await tdxGet(
-          env, ctx, `/v2/Bus/StopOfRoute/City/${city}/${name}`, 3600,
+          env, ctx, `/v2/Bus/StopOfRoute/City/${city}/${name}`, 86400,
           '%24select=RouteName,SubRouteUID,SubRouteName,Direction,Stops'
         );
       }
