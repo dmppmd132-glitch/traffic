@@ -85,9 +85,16 @@ async function tdxGet(env, ctx, path, ttl, query = '', skipEmpty = false, base =
   if (hit) return hit;
 
   const url = `${base}${path}?%24format=JSON${query ? '&' + query : ''}`;
-  const call = async () => fetch(url, {
-    headers: { authorization: `Bearer ${await getToken(env)}`, 'accept-encoding': 'gzip' },
-  });
+  // 取 token 失敗（例如 token 端點被限流）也當成暫時性錯誤（503），不要讓整個請求變成 500
+  const call = async () => {
+    try {
+      return await fetch(url, {
+        headers: { authorization: `Bearer ${await getToken(env)}`, 'accept-encoding': 'gzip' },
+      });
+    } catch (err) {
+      return new Response(String(err.message || err), { status: 503 });
+    }
+  };
 
   let upstream = await call();
   // 暫時性錯誤自動重試一次：429（太頻繁）、5xx（TDX 暫時異常）；401 代表 token 失效，清掉後重取

@@ -78,7 +78,12 @@
     // API 網址前綴由 config.js 設定（前端放 GitHub Pages、後端在 Cloudflare Worker）
     const base = (window.TRA_API_BASE || '').replace(/\/$/, '');
     const res = await fetch(base + path);
-    if (!res.ok) throw new Error('伺服器回應 ' + res.status);
+    if (!res.ok) {
+      // 盡量帶出 Worker 回傳的原因，方便判斷是哪裡出問題
+      let why = '';
+      try { const b = await res.json(); why = b.detail || b.error || ''; if (b.status) why = 'TDX ' + b.status + ' ' + why; } catch { /* 沒有內文就略過 */ }
+      throw new Error('伺服器回應 ' + res.status + (why ? '（' + String(why).slice(0, 80) + '）' : ''));
+    }
     return res.json();
   }
 
