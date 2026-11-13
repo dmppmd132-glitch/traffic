@@ -17,6 +17,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // 向 TDX 取得新的 token；遇到 429 或 5xx 會稍等後重試，最多 3 次
 async function fetchToken(env) {
   let lastStatus = 0;
+  let lastBody = '';
   for (let i = 0; i < 3; i++) {
     const res = await fetch(TOKEN_URL, {
       method: 'POST',
@@ -35,10 +36,11 @@ async function fetchToken(env) {
       };
     }
     lastStatus = res.status;
+    try { lastBody = (await res.text()).slice(0, 120); } catch { lastBody = ''; }
     if (res.status !== 429 && res.status < 500) break; // 401、400 等重試也沒用
     await sleep(800 * (i + 1));
   }
-  throw new Error('TDX 取得 token 失敗：' + lastStatus);
+  throw new Error('TDX 取得 token 失敗：' + lastStatus + (lastBody ? ' ' + lastBody : '') + (!env.TDX_ID || !env.TDX_SECRET ? '（Worker 未設定 TDX_ID/TDX_SECRET）' : ''));
 }
 
 async function getToken(env) {
@@ -339,6 +341,7 @@ async function tdxGeocode(env, q) {
     ? [...addrTexts.map((t) => ['Address', t]), ['Markname', q]]
     : [['Markname', q], ['Address', q]];
   let lastStatus = 0;
+  let lastBody = '';
   for (const [kind, text] of jobs) {
     const url = `${TDX_ADV}/V3/Map/GeoCode/Coordinate/${kind}/${encodeURIComponent(text)}?%24format=JSON`;
     const r = await tdxJson(env, url);
